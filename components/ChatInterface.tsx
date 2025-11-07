@@ -1,0 +1,580 @@
+'use client';
+
+import React, { useState, useRef, useEffect } from 'react';
+import { colors, typography, spacing, borderRadius, shadows, motion } from '../design-tokens';
+import { MessageBubble } from './MessageBubble';
+import { TypingIndicator } from './TypingIndicator';
+import { AICreditsBar } from './AICreditsBar';
+import { ChatHistorySidebar, ChatSession } from './ChatHistorySidebar';
+import { LLMSelector, LLMModel } from './LLMSelector';
+// import { PsychologicalProfileDebug } from './PsychologicalProfileDebug'; // COMMENTED OUT FOR PRODUCTION
+
+export interface Message {
+  id: string;
+  content: string;
+  isUser: boolean;
+  timestamp: Date;
+  psychologicalProfile?: any;
+  profile?: any; // New structured profile from backend
+  analysis?: any; // Legacy analysis for compatibility
+  reasoning?: string;
+}
+
+interface ChatInterfaceProps {
+  onSendMessage: (message: string, selectedLLM?: string) => Promise<any>;
+  sessionId?: string;
+  onNewChat?: () => void; // Add callback to reset session in parent
+}
+
+export const ChatInterface: React.FC<ChatInterfaceProps> = ({ 
+  onSendMessage, 
+  sessionId,
+  onNewChat: onNewChatProp
+}) => {
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [inputValue, setInputValue] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [aiCredits, setAiCredits] = useState(75); // Example: 75% filled
+  const [showReasoning, setShowReasoning] = useState(true); // Always show LLM reasoning
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [editedContent, setEditedContent] = useState('');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
+  const [selectedLLM, setSelectedLLM] = useState<string>('gpt-4o');
+  const [availableModels, setAvailableModels] = useState<LLMModel[]>([]);
+  const [isLoadingModels, setIsLoadingModels] = useState(true);
+  const [latestProfile, setLatestProfile] = useState<any>(null);
+  const [latestAnalysis, setLatestAnalysis] = useState<any>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  // Fetch available LLM models
+  useEffect(() => {
+    const fetchAvailableModels = async () => {
+      try {
+        const response = await fetch('http://localhost:5000/chat/llms');
+        if (response.ok) {
+          const data = await response.json();
+          setAvailableModels(data.models || []);
+          if (data.default && !selectedLLM) {
+            setSelectedLLM(data.default);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching available models:', error);
+        // Fallback to default models
+        setAvailableModels([
+          { id: 'gpt-4o', name: 'gpt-4o', provider: 'openai', maxTokens: 4000 },
+          { id: 'gpt-3.5-turbo', name: 'gpt-3.5-turbo', provider: 'openai', maxTokens: 2000 },
+          { id: 'claude-3-5-sonnet', name: 'claude-3-5-sonnet-20241022', provider: 'claude', maxTokens: 4000 },
+          { id: 'gemini-1.5-pro', name: 'gemini-1.5-pro', provider: 'gemini', maxTokens: 4000 },
+        ]);
+      } finally {
+        setIsLoadingModels(false);
+      }
+    };
+
+    fetchAvailableModels();
+  }, []);
+
+  // Mock chat sessions data - replace with real data later
+  useEffect(() => {
+    const mockSessions: ChatSession[] = [
+      {
+        id: 'session-1',
+        title: 'Career Advice Discussion',
+        lastMessage: 'Thank you for the insights about my personality traits...',
+        timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000), // 2 hours ago
+        messageCount: 8,
+      },
+      {
+        id: 'session-2',
+        title: 'Stress Management Help',
+        lastMessage: 'I\'ve been feeling overwhelmed with work lately...',
+        timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000), // 1 day ago
+        messageCount: 12,
+      },
+      {
+        id: 'session-3',
+        title: 'Relationship Guidance',
+        lastMessage: 'How can I improve my communication with my partner?',
+        timestamp: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000), // 3 days ago
+        messageCount: 15,
+      },
+      {
+        id: 'session-4',
+        title: 'Personal Growth Planning',
+        lastMessage: 'What are some steps I can take to develop my emotional intelligence?',
+        timestamp: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000), // 1 week ago
+        messageCount: 6,
+      },
+    ];
+    setChatSessions(mockSessions);
+  }, []);
+
+  const handleSendMessage = async () => {
+    if (!inputValue.trim() || isLoading) return;
+
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      content: inputValue,
+      isUser: true,
+      timestamp: new Date(),
+    };
+
+    setMessages(prev => [...prev, userMessage]);
+    setInputValue('');
+    setIsLoading(true);
+
+    try {
+      const response = await onSendMessage(inputValue, selectedLLM);
+      
+      // Update latest profile and analysis for debug panel
+      if (response.profile) {
+        setLatestProfile(response.profile);
+      }
+      if (response.analysis) {
+        setLatestAnalysis(response.analysis);
+      }
+      
+      const aiMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        content: response.response,
+        isUser: false,
+        timestamp: new Date(),
+        psychologicalProfile: response.analysis, // Legacy
+        profile: response.profile, // New structured profile
+        analysis: response.analysis, // Legacy analysis
+        reasoning: response.reasoning,
+      };
+
+      setMessages(prev => [...prev, aiMessage]);
+    } catch (error) {
+      console.error('Error sending message:', error);
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        content: 'I apologize, but I encountered an error. Please try again.',
+        isUser: false,
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
+    }
+  };
+
+  const handleSidebarToggle = () => {
+    setIsSidebarOpen(!isSidebarOpen);
+  };
+
+  const handleSessionSelect = (sessionId: string) => {
+    // TODO: Load session data from backend
+    console.log('Loading session:', sessionId);
+    setIsSidebarOpen(false);
+  };
+
+  const handleNewChat = () => {
+    setMessages([]);
+    setIsSidebarOpen(false);
+    // Clear any cached profile state
+    setLatestProfile(null);
+    setLatestAnalysis(null);
+    // Reset session ID in parent component so backend generates a fresh one
+    if (onNewChatProp) {
+      onNewChatProp();
+    }
+    console.log('Starting new chat - session will be reset on next message');
+  };
+
+  const handleLLMChange = (llmId: string) => {
+    setSelectedLLM(llmId);
+  };
+
+  const handleEditStart = (messageId: string, currentContent: string) => {
+    setEditingMessageId(messageId);
+    setEditedContent(currentContent);
+  };
+
+  const handleEditChange = (content: string) => {
+    setEditedContent(content);
+  };
+
+  const handleEditSave = async () => {
+    if (!editingMessageId) return;
+    
+    // Find the index of the edited message
+    const editedIndex = messages.findIndex(msg => msg.id === editingMessageId);
+    if (editedIndex === -1) return;
+    
+    // Remove all messages after the edited one (including AI's old response)
+    const messagesUpToEdit = messages.slice(0, editedIndex);
+    
+    // Update the edited message with new content
+    const updatedMessage = { ...messages[editedIndex], content: editedContent };
+    
+    setMessages([...messagesUpToEdit, updatedMessage]);
+    setEditingMessageId(null);
+    setEditedContent('');
+    setIsLoading(true);
+    
+    // Resend the edited message to get a fresh AI response
+    try {
+      const response = await onSendMessage(editedContent, selectedLLM);
+      
+      // Update profile and analysis
+      if (response.profile) {
+        setLatestProfile(response.profile);
+      }
+      if (response.analysis) {
+        setLatestAnalysis(response.analysis);
+      }
+      
+      const aiMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        content: response.response,
+        isUser: false,
+        timestamp: new Date(),
+        psychologicalProfile: response.profile,
+        analysis: response.analysis,
+        reasoning: response.reasoning,
+      };
+      
+      setMessages(prev => [...prev, aiMessage]);
+    } catch (error) {
+      console.error('Error regenerating response:', error);
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        content: "I apologize, but I encountered an error. Please try again.",
+        isUser: false,
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleEditCancel = () => {
+    setEditingMessageId(null);
+    setEditedContent('');
+  };
+
+  return (
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      height: '100vh',
+      background: `linear-gradient(135deg, ${colors.architectIndigo}15 0%, ${colors.scaleOrange}15 100%)`,
+      fontFamily: typography.body.fontFamily,
+    }}>
+      {/* Header */}
+      <div style={{
+        padding: spacing.containerPadding.desktop,
+        background: colors.white,
+        borderBottom: `1px solid ${colors.precisionPink}20`,
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <button
+            onClick={handleSidebarToggle}
+            style={{
+              width: '40px',
+              height: '40px',
+              borderRadius: borderRadius.sm,
+              border: 'none',
+              background: isSidebarOpen ? colors.architectScale : `${colors.precisionPink}20`,
+              color: isSidebarOpen ? colors.white : colors.deepPlum,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transition: `all ${motion.cardHover}`,
+              fontSize: '18px',
+            }}
+            onMouseEnter={(e) => {
+              if (!isSidebarOpen) {
+                e.currentTarget.style.background = colors.precisionPink;
+                e.currentTarget.style.color = colors.white;
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!isSidebarOpen) {
+                e.currentTarget.style.background = `${colors.precisionPink}20`;
+                e.currentTarget.style.color = colors.deepPlum;
+              }
+            }}
+          >
+            ☰
+          </button>
+          
+        <div>
+          <h1 style={{
+              fontFamily: typography.h1.fontFamily, fontSize: "64px", lineHeight: typography.h1.lineHeight,
+            color: colors.architectIndigo,
+            margin: 0,
+            background: colors.architectScale,
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            }}            >
+              AI Alchemist
+          </h1>
+          <p style={{
+              fontFamily: typography.caption.fontFamily,
+              fontSize: '13px',
+              lineHeight: typography.caption.lineHeight,
+            color: colors.deepPlum,
+            margin: '4px 0 0 0',
+          }}>
+              Transforming thoughts into growth
+          </p>
+          </div>
+        </div>
+        
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '16px',
+        }}>
+          <AICreditsBar credits={aiCredits} />
+          
+          <div style={{
+              padding: '8px 16px',
+            background: `${colors.precisionPink}10`,
+              borderRadius: borderRadius.sm,
+            border: `1px solid ${colors.precisionPink}30`,
+              fontFamily: typography.caption.fontFamily,
+              fontSize: typography.caption.fontSize.desktop,
+            color: colors.deepPlum,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+          }}>
+            <span>🧠</span>
+            <span>Psychological analysis active</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Messages Container */}
+      <div style={{
+        flex: 1,
+        overflowY: 'auto',
+        padding: spacing.containerPadding.desktop,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '16px',
+      }}>
+        {messages.length === 0 && (
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            height: '100%',
+            textAlign: 'center',
+            color: colors.deepPlum,
+          }}>
+            <div style={{
+              width: '80px',
+              height: '80px',
+              borderRadius: '50%',
+              background: colors.architectScale,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginBottom: '24px',
+            }}>
+              <span style={{ fontSize: '32px' }}>🧠</span>
+            </div>
+            <h2 style={{
+              fontFamily: typography.h2.fontFamily, fontSize: "64px", lineHeight: typography.h2.lineHeight,
+              color: colors.architectIndigo,
+              marginBottom: '16px',
+            }}>
+              Welcome to AI Alchemist
+            </h2>
+            <p style={{
+              fontFamily: typography.body.fontFamily,
+              fontSize: "16px",
+              lineHeight: typography.body.lineHeight,
+              color: colors.deepPlum,
+              maxWidth: '400px',
+            }}>
+              I transform your thoughts and feelings into actionable growth. 
+              What would you like to explore today?
+            </p>
+          </div>
+        )}
+
+        {messages.map((message) => (
+          <MessageBubble
+            key={message.id}
+            message={message}
+            showReasoning={showReasoning}
+            isEditing={editingMessageId === message.id}
+            editedContent={editedContent}
+            onEditStart={() => handleEditStart(message.id, message.content)}
+            onEditChange={handleEditChange}
+            onEditSave={handleEditSave}
+            onEditCancel={handleEditCancel}
+          />
+        ))}
+
+        {isLoading && <TypingIndicator />}
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* Input Area */}
+      <div style={{
+        padding: spacing.containerPadding.desktop,
+        background: colors.white,
+        borderTop: `1px solid ${colors.precisionPink}20`,
+      }}>
+        <div style={{
+          display: 'flex',
+          gap: '16px',
+          alignItems: 'center',
+        }}>
+          <div style={{
+            flex: 1,
+            position: 'relative',
+            marginRight: '8px',
+          }}>
+            <textarea
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              onKeyPress={handleKeyPress}
+              placeholder="Share what's on your mind..."
+              disabled={isLoading}
+              style={{
+                width: '100%',
+                minHeight: '48px',
+                maxHeight: '120px',
+                padding: '12px 16px',
+                paddingRight: '120px', // Make room for LLM selector
+                border: `2px solid ${colors.precisionPink}30`,
+                borderRadius: borderRadius.md,
+                fontFamily: typography.body.fontFamily,
+                fontSize: typography.body.fontSize.desktop,
+                lineHeight: typography.body.lineHeight,
+                color: colors.black,
+                resize: 'none',
+                outline: 'none',
+                transition: `border-color ${motion.cardHover}`,
+                background: colors.white,
+                boxSizing: 'border-box',
+              }}
+              onFocus={(e) => {
+                e.target.style.borderColor = colors.scaleOrange;
+              }}
+              onBlur={(e) => {
+                e.target.style.borderColor = `${colors.precisionPink}30`;
+              }}
+            />
+            
+            {/* Integrated LLM Selector */}
+            <div style={{
+              position: 'absolute',
+              right: '8px',
+              top: '50%',
+              transform: 'translateY(-50%)',
+              zIndex: 10,
+            }}>
+              <LLMSelector
+                selectedLLM={selectedLLM}
+                onLLMChange={handleLLMChange}
+                availableModels={availableModels}
+                isLoading={isLoadingModels}
+                isIntegrated={true}
+              />
+            </div>
+          </div>
+          
+          <button
+            onClick={handleSendMessage}
+            disabled={!inputValue.trim() || isLoading}
+            style={{
+              height: '48px',
+              width: '48px',
+              borderRadius: '50%',
+              border: 'none',
+              background: inputValue.trim() && !isLoading 
+                ? colors.architectScale 
+                : `${colors.precisionPink}30`,
+              color: colors.white,
+              cursor: inputValue.trim() && !isLoading ? 'pointer' : 'not-allowed',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transition: `all ${motion.cardHover}`,
+              boxShadow: inputValue.trim() && !isLoading ? shadows.md : 'none',
+              flexShrink: 0,
+              marginLeft: '4px',
+            }}
+            onMouseEnter={(e) => {
+              if (inputValue.trim() && !isLoading) {
+                e.currentTarget.style.background = colors.ctaHover;
+                e.currentTarget.style.transform = 'scale(1.05)';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (inputValue.trim() && !isLoading) {
+                e.currentTarget.style.background = colors.architectScale;
+                e.currentTarget.style.transform = 'scale(1)';
+              }
+            }}
+          >
+            <span style={{ 
+              fontSize: '20px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              lineHeight: 1,
+              transform: 'translateY(-1px)'
+            }}>
+              {isLoading ? '⏳' : '➤'}
+            </span>
+          </button>
+        </div>
+      </div>
+
+      {/* Chat History Sidebar */}
+      <ChatHistorySidebar
+        isOpen={isSidebarOpen}
+        onClose={() => setIsSidebarOpen(false)}
+        sessions={chatSessions}
+        activeSessionId={sessionId}
+        onSessionSelect={handleSessionSelect}
+        onNewChat={handleNewChat}
+      />
+
+      {/* Psychological Profile Debug Panel - COMMENTED OUT FOR PRODUCTION */}
+      {/* Uncomment the section below to see detailed psychological analysis in debug panel */}
+      {/* 
+      <PsychologicalProfileDebug 
+        profile={latestProfile}
+        analysis={latestAnalysis}
+      />
+      */}
+    </div>
+  );
+};
+
+
+

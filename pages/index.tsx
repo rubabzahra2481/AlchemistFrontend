@@ -1,0 +1,50 @@
+import React, { useState } from 'react';
+import { ChatInterface } from '../components/ChatInterface';
+
+export default function Home() {
+  const [sessionId, setSessionId] = useState<string | undefined>(undefined);
+
+  const handleSendMessage = async (message: string, selectedLLM?: string) => {
+    try {
+      const response = await fetch('http://localhost:5000/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message,
+          sessionId,
+          selectedLLM: selectedLLM || 'gpt-4o',
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to send message');
+      }
+
+      const data = await response.json();
+      
+      // Set session ID from response if not already set
+      if (!sessionId && data.sessionId) {
+        setSessionId(data.sessionId);
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Error sending message:', error);
+      throw error;
+    }
+  };
+
+  const handleNewChat = () => {
+    setSessionId(undefined);
+  };
+
+  return (
+    <ChatInterface 
+      onSendMessage={handleSendMessage} 
+      sessionId={sessionId}
+      onNewChat={handleNewChat}
+    />
+  );
+}
