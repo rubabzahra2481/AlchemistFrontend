@@ -6,7 +6,15 @@ export default function Home() {
 
   const handleSendMessage = async (message: string, selectedLLM?: string) => {
     try {
-      const response = await fetch('http://localhost:5000/chat', {
+      // Use deployed backend URL for production, localhost for development
+      const isLocalhost = typeof window !== 'undefined' && 
+        (window.location.hostname === 'localhost' || window.location.hostname.includes('192.168'));
+      
+      const apiUrl = isLocalhost 
+        ? `http://${window.location.hostname}:5000/chat`
+        : 'https://main.dc38eofr78vhm.amplifyapp.com/chat';
+      
+      const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

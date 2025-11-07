@@ -170,6 +170,16 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
     return parts.length > 0 ? parts : text;
   };
 
+  const [isMobile, setIsMobile] = React.useState(false);
+
+  // Detect mobile viewport
+  React.useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
   return (
     <div style={{
       display: 'flex',
@@ -178,7 +188,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
     }}>
       <div 
         style={{
-          maxWidth: '70%',
+          maxWidth: isMobile ? '85%' : '70%',
           display: 'flex',
           flexDirection: 'column',
           alignItems: isUser ? 'flex-end' : 'flex-start',

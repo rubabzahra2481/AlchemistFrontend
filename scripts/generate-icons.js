@@ -50,3 +50,5 @@ console.log('2. Use: https://www.pwabuilder.com/imageGenerator');
 console.log('3. Use Figma/Photoshop to export at different sizes');
 console.log('4. Use ImageMagick: convert icon-base.svg -resize 512x512 icon-512x512.png');
 
+
+

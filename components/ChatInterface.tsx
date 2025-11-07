@@ -45,21 +45,41 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const [isLoadingModels, setIsLoadingModels] = useState(true);
   const [latestProfile, setLatestProfile] = useState<any>(null);
   const [latestAnalysis, setLatestAnalysis] = useState<any>(null);
+  const [isMobile, setIsMobile] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Detect mobile viewport
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
   useEffect(() => {
+    // Only scroll to bottom if there are messages (don't scroll on initial empty load)
+    if (messages.length > 0) {
     scrollToBottom();
+    }
   }, [messages]);
 
   // Fetch available LLM models
   useEffect(() => {
     const fetchAvailableModels = async () => {
       try {
-        const response = await fetch('http://localhost:5000/chat/llms');
+        // Use deployed backend URL for production, localhost for development
+        const isLocalhost = typeof window !== 'undefined' && 
+          (window.location.hostname === 'localhost' || window.location.hostname.includes('192.168'));
+        
+        const apiUrl = isLocalhost 
+          ? `http://${window.location.hostname}:5000/chat/llms`
+          : 'https://main.dc38eofr78vhm.amplifyapp.com/chat/llms';
+        
+        const response = await fetch(apiUrl);
         if (response.ok) {
           const data = await response.json();
           setAvailableModels(data.models || []);
@@ -283,12 +303,14 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     }}>
       {/* Header */}
       <div style={{
-        padding: spacing.containerPadding.desktop,
+        padding: isMobile ? '16px' : spacing.containerPadding.desktop,
         background: colors.white,
         borderBottom: `1px solid ${colors.precisionPink}20`,
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
+        flexWrap: isMobile ? 'wrap' : 'nowrap',
+        gap: isMobile ? '12px' : '0',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <button
@@ -325,7 +347,9 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
           
         <div>
           <h1 style={{
-              fontFamily: typography.h1.fontFamily, fontSize: "64px", lineHeight: typography.h1.lineHeight,
+              fontFamily: typography.h1.fontFamily, 
+              fontSize: isMobile ? '32px' : "64px", 
+              lineHeight: typography.h1.lineHeight,
             color: colors.architectIndigo,
             margin: 0,
             background: colors.architectScale,
@@ -336,7 +360,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
           </h1>
           <p style={{
               fontFamily: typography.caption.fontFamily,
-              fontSize: '13px',
+              fontSize: isMobile ? '11px' : '13px',
               lineHeight: typography.caption.lineHeight,
             color: colors.deepPlum,
             margin: '4px 0 0 0',
@@ -347,7 +371,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         </div>
         
         <div style={{
-          display: 'flex',
+          display: isMobile ? 'none' : 'flex',
           alignItems: 'center',
           gap: '16px',
         }}>
@@ -375,7 +399,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       <div style={{
         flex: 1,
         overflowY: 'auto',
-        padding: spacing.containerPadding.desktop,
+        padding: isMobile ? '16px' : spacing.containerPadding.desktop,
         display: 'flex',
         flexDirection: 'column',
         gap: '16px',
@@ -389,32 +413,36 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
             height: '100%',
             textAlign: 'center',
             color: colors.deepPlum,
+            padding: isMobile ? '0 20px' : '0',
           }}>
             <div style={{
-              width: '80px',
-              height: '80px',
+              width: isMobile ? '64px' : '80px',
+              height: isMobile ? '64px' : '80px',
               borderRadius: '50%',
               background: colors.architectScale,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              marginBottom: '24px',
+              marginBottom: isMobile ? '16px' : '24px',
             }}>
-              <span style={{ fontSize: '32px' }}>🧠</span>
+              <span style={{ fontSize: isMobile ? '28px' : '32px' }}>🧠</span>
             </div>
             <h2 style={{
-              fontFamily: typography.h2.fontFamily, fontSize: "64px", lineHeight: typography.h2.lineHeight,
+              fontFamily: typography.h2.fontFamily, 
+              fontSize: isMobile ? '24px' : "64px", 
+              lineHeight: isMobile ? '1.2' : typography.h2.lineHeight,
               color: colors.architectIndigo,
-              marginBottom: '16px',
+              marginBottom: isMobile ? '12px' : '16px',
             }}>
               Welcome to AI Alchemist
             </h2>
             <p style={{
               fontFamily: typography.body.fontFamily,
-              fontSize: "16px",
-              lineHeight: typography.body.lineHeight,
+              fontSize: isMobile ? '15px' : "16px",
+              lineHeight: isMobile ? '1.5' : typography.body.lineHeight,
               color: colors.deepPlum,
-              maxWidth: '400px',
+              maxWidth: isMobile ? '100%' : '400px',
+              padding: isMobile ? '0 8px' : '0',
             }}>
               I transform your thoughts and feelings into actionable growth. 
               What would you like to explore today?
@@ -442,7 +470,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
       {/* Input Area */}
       <div style={{
-        padding: spacing.containerPadding.desktop,
+        padding: isMobile ? '16px' : spacing.containerPadding.desktop,
         background: colors.white,
         borderTop: `1px solid ${colors.precisionPink}20`,
       }}>
@@ -462,12 +490,13 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
               onKeyPress={handleKeyPress}
               placeholder="Share what's on your mind..."
               disabled={isLoading}
+              autoFocus={false}
               style={{
                 width: '100%',
                 minHeight: '48px',
                 maxHeight: '120px',
                 padding: '12px 16px',
-                paddingRight: '120px', // Make room for LLM selector
+                paddingRight: isMobile ? '110px' : '120px', // Make room for LLM selector
                 border: `2px solid ${colors.precisionPink}30`,
                 borderRadius: borderRadius.md,
                 fontFamily: typography.body.fontFamily,

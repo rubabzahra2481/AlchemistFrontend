@@ -59,3 +59,5 @@ console.log('   3. Download generated PNG icons');
 console.log('   4. Replace SVG files in frontend/public/icons/');
 console.log('\n   OR use the icon generator at: http://localhost:8000/icon-generator.html');
 
+
+
