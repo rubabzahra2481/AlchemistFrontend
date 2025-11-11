@@ -52,3 +52,5 @@ console.log('4. Use ImageMagick: convert icon-base.svg -resize 512x512 icon-512x
 
 
 
+
+

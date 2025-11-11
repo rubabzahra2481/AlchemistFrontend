@@ -12,7 +12,7 @@ export default function Home() {
       
       const apiUrl = isLocalhost 
         ? `http://${window.location.hostname}:5000/chat`
-        : 'https://main.dc38eofr78vhm.amplifyapp.com/chat';
+        : 'http://agents-backend-env.eba-rvcdvrs2.us-east-1.elasticbeanstalk.com/chat';
       
       const response = await fetch(apiUrl, {
         method: 'POST',
