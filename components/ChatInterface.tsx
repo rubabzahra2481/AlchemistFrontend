@@ -77,7 +77,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         
         const apiUrl = isLocalhost 
           ? `http://${window.location.hostname}:5000/chat/llms`
-          : 'https://agents-backend-env.eba-rvcdvrs2.us-east-1.elasticbeanstalk.com/chat/llms';
+          : 'https://ptvmvy9qhn.us-east-1.awsapprunner.com/chat/llms';
         
         const response = await fetch(apiUrl);
         if (response.ok) {
