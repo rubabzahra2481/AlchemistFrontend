@@ -397,12 +397,29 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             color: colors.deepPlum,
             opacity: 0.7,
           }}>
-            {message.timestamp && !isNaN(new Date(message.timestamp).getTime()) 
-              ? new Date(message.timestamp).toLocaleTimeString([], { 
+            {(() => {
+              console.log('📅 [MessageBubble] Rendering timestamp for message:', message.id);
+              console.log('📅 [MessageBubble] message.timestamp:', message.timestamp, 'type:', typeof message.timestamp);
+              if (!message.timestamp) {
+                console.warn('⚠️ [MessageBubble] No timestamp found');
+                return '';
+              }
+              const date = new Date(message.timestamp);
+              console.log('📅 [MessageBubble] Parsed date:', date);
+              const isValid = !isNaN(date.getTime());
+              console.log('📅 [MessageBubble] Is valid date:', isValid);
+              if (isValid) {
+                const formatted = date.toLocaleTimeString([], { 
                   hour: '2-digit', 
                   minute: '2-digit' 
-                })
-              : ''}
+                });
+                console.log('📅 [MessageBubble] Formatted time:', formatted);
+                return formatted;
+              } else {
+                console.error('❌ [MessageBubble] Invalid date - timestamp:', message.timestamp);
+                return '';
+              }
+            })()}
           </div>
           
           {/* Action Buttons - ChatGPT Style */}

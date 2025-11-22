@@ -105,17 +105,23 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
         if (response.ok) {
           const historyData = await response.json();
-          // Transform backend messages to frontend format
-          const transformedMessages: Message[] = historyData.map((msg: any, index: number) => ({
+        // Transform backend messages to frontend format
+        const transformedMessages: Message[] = historyData.map((msg: any, index: number) => {
+          console.log('📥 [ChatInterface] Loading message from session select:', msg.role, 'timestamp:', msg.timestamp, 'type:', typeof msg.timestamp);
+          const timestamp = msg.timestamp ? new Date(msg.timestamp) : new Date();
+          console.log('📥 [ChatInterface] Parsed timestamp:', timestamp, 'isValid:', !isNaN(timestamp.getTime()));
+          return {
             id: `${sessionId}-${index}`,
             content: msg.content,
             isUser: msg.role === 'user',
-            timestamp: msg.timestamp ? new Date(msg.timestamp) : new Date(),
+            timestamp: timestamp,
             reasoning: msg.reasoning,
             analysis: msg.analysis,
             profile: msg.profile,
-          }));
-          setMessages(transformedMessages);
+          };
+        });
+        console.log('✅ [ChatInterface] Transformed messages for session:', transformedMessages);
+        setMessages(transformedMessages);
         } else if (response.status === 404) {
           // Session doesn't exist yet - this is fine for new sessions
           setMessages([]);
@@ -179,6 +185,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
   // Load chat sessions function (extracted for reuse)
   const loadChatSessions = useCallback(async () => {
+    console.log('🔄 [ChatInterface] loadChatSessions() called');
     try {
       // Get Supabase token from localStorage
       const token = typeof window !== 'undefined' 
@@ -186,7 +193,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         : null;
 
       if (!token) {
-        console.log('No token available - skipping session load');
+        console.warn('⚠️ [ChatInterface] No token available - skipping session load');
         return;
       }
 
@@ -198,35 +205,45 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         ? `http://${window.location.hostname}:5000/chat/sessions`
         : 'https://ptvmvy9qhn.us-east-1.awsapprunner.com/chat/sessions';
       
+      console.log('📡 [ChatInterface] Fetching sessions from:', apiUrl);
       const response = await fetch(apiUrl, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
       });
 
+      console.log('📥 [ChatInterface] Sessions response status:', response.status);
       if (response.ok) {
         const sessionsData = await response.json();
+        console.log('✅ [ChatInterface] Sessions data received:', sessionsData);
         // Transform backend response to frontend format
-        const transformedSessions: ChatSession[] = sessionsData.map((session: any) => ({
-          id: session.id,
-          title: session.title || 'Untitled Chat',
-          lastMessage: session.lastMessage || '',
-          timestamp: session.lastActivity || session.createdAt ? new Date(session.lastActivity || session.createdAt) : new Date(),
-          messageCount: session.messageCount || 0,
-        }));
+        const transformedSessions: ChatSession[] = sessionsData.map((session: any) => {
+          const timestamp = session.lastActivity || session.createdAt;
+          console.log('📅 [ChatInterface] Processing session:', session.id, 'timestamp:', timestamp, 'type:', typeof timestamp);
+          return {
+            id: session.id,
+            title: session.title || 'Untitled Chat',
+            lastMessage: session.lastMessage || '',
+            timestamp: timestamp ? new Date(timestamp) : new Date(),
+            messageCount: session.messageCount || 0,
+          };
+        });
+        console.log('✅ [ChatInterface] Transformed sessions:', transformedSessions);
         setChatSessions(transformedSessions);
+        console.log('✅ [ChatInterface] setChatSessions() called with', transformedSessions.length, 'sessions');
       } else if (response.status === 401) {
-        console.log('Unauthorized - token may be expired');
+        console.warn('⚠️ [ChatInterface] Unauthorized - token may be expired');
       } else {
-        console.error('Failed to load chat sessions:', response.statusText);
+        console.error('❌ [ChatInterface] Failed to load chat sessions:', response.status, response.statusText);
       }
     } catch (error) {
-      console.error('Error loading chat sessions:', error);
+      console.error('❌ [ChatInterface] Error loading chat sessions:', error);
     }
   }, []);
 
   // Load chat sessions from backend on mount
   useEffect(() => {
+    console.log('🚀 [ChatInterface] Component mounted - loading chat sessions');
     loadChatSessions();
   }, [loadChatSessions]);
 
@@ -268,13 +285,22 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
       setMessages(prev => [...prev, aiMessage]);
       
+      console.log('✅ [ChatInterface] AI message added to state');
+      console.log('📋 [ChatInterface] Response from backend:', response);
+      console.log('📋 [ChatInterface] Response.sessionId:', response.sessionId);
+      console.log('📋 [ChatInterface] Current sessionId:', sessionId);
+      console.log('📋 [ChatInterface] onSessionChange available:', !!onSessionChange);
+      
       // Update sessionId in parent if it's in the response
       if (response.sessionId && onSessionChange) {
+        console.log('🔄 [ChatInterface] Updating sessionId in parent:', response.sessionId);
         onSessionChange(response.sessionId);
       }
       
       // Refresh chat sessions list after sending message
+      console.log('🔄 [ChatInterface] Refreshing chat sessions list...');
       await loadChatSessions();
+      console.log('✅ [ChatInterface] Chat sessions refreshed');
     } catch (error) {
       console.error('Error sending message:', error);
       const errorMessage: Message = {
@@ -331,15 +357,20 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       if (response.ok) {
         const historyData = await response.json();
         // Transform backend messages to frontend format
-        const transformedMessages: Message[] = historyData.map((msg: any, index: number) => ({
-          id: `${sessionId}-${index}`,
-          content: msg.content,
-          isUser: msg.role === 'user',
-          timestamp: msg.timestamp ? new Date(msg.timestamp) : new Date(),
-          reasoning: msg.reasoning,
-          analysis: msg.analysis,
-          profile: msg.profile,
-        }));
+        const transformedMessages: Message[] = historyData.map((msg: any, index: number) => {
+          console.log('📥 [ChatInterface] Loading message from history:', msg.role, 'timestamp:', msg.timestamp, 'type:', typeof msg.timestamp);
+          const timestamp = msg.timestamp ? new Date(msg.timestamp) : new Date();
+          console.log('📥 [ChatInterface] Parsed timestamp:', timestamp, 'isValid:', !isNaN(timestamp.getTime()));
+          return {
+            id: `${sessionId}-${index}`,
+            content: msg.content,
+            isUser: msg.role === 'user',
+            timestamp: timestamp,
+            reasoning: msg.reasoning,
+            analysis: msg.analysis,
+            profile: msg.profile,
+          };
+        });
         setMessages(transformedMessages);
         // Update sessionId in parent to maintain it
         if (onSessionChange) {
