@@ -397,10 +397,12 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             color: colors.deepPlum,
             opacity: 0.7,
           }}>
-            {message.timestamp.toLocaleTimeString([], { 
-              hour: '2-digit', 
-              minute: '2-digit' 
-            })}
+            {message.timestamp && !isNaN(new Date(message.timestamp).getTime()) 
+              ? new Date(message.timestamp).toLocaleTimeString([], { 
+                  hour: '2-digit', 
+                  minute: '2-digit' 
+                })
+              : ''}
           </div>
           
           {/* Action Buttons - ChatGPT Style */}

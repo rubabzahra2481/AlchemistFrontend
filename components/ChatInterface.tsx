@@ -110,7 +110,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
             id: `${sessionId}-${index}`,
             content: msg.content,
             isUser: msg.role === 'user',
-            timestamp: new Date(msg.timestamp),
+            timestamp: msg.timestamp ? new Date(msg.timestamp) : new Date(),
             reasoning: msg.reasoning,
             analysis: msg.analysis,
             profile: msg.profile,
@@ -177,57 +177,58 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     fetchAvailableModels();
   }, []);
 
-  // Load chat sessions from backend
-  useEffect(() => {
-    const loadChatSessions = async () => {
-      try {
-        // Get Supabase token from localStorage
-        const token = typeof window !== 'undefined' 
-          ? localStorage.getItem('supabase_token') || localStorage.getItem('sb_token')
-          : null;
+  // Load chat sessions function (extracted for reuse)
+  const loadChatSessions = useCallback(async () => {
+    try {
+      // Get Supabase token from localStorage
+      const token = typeof window !== 'undefined' 
+        ? localStorage.getItem('supabase_token') || localStorage.getItem('sb_token')
+        : null;
 
-        if (!token) {
-          console.log('No token available - skipping session load');
-          return;
-        }
-
-        // Use deployed backend URL for production, localhost for development
-        const isLocalhost = typeof window !== 'undefined' && 
-          (window.location.hostname === 'localhost' || window.location.hostname.includes('192.168'));
-        
-        const apiUrl = isLocalhost 
-          ? `http://${window.location.hostname}:5000/chat/sessions`
-          : 'https://ptvmvy9qhn.us-east-1.awsapprunner.com/chat/sessions';
-        
-        const response = await fetch(apiUrl, {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        });
-
-        if (response.ok) {
-          const sessionsData = await response.json();
-          // Transform backend response to frontend format
-          const transformedSessions: ChatSession[] = sessionsData.map((session: any) => ({
-            id: session.id,
-            title: session.title || 'Untitled Chat',
-            lastMessage: session.lastMessage || '',
-            timestamp: new Date(session.lastActivity || session.createdAt),
-            messageCount: session.messageCount || 0,
-          }));
-          setChatSessions(transformedSessions);
-        } else if (response.status === 401) {
-          console.log('Unauthorized - token may be expired');
-        } else {
-          console.error('Failed to load chat sessions:', response.statusText);
-        }
-      } catch (error) {
-        console.error('Error loading chat sessions:', error);
+      if (!token) {
+        console.log('No token available - skipping session load');
+        return;
       }
-    };
 
-    loadChatSessions();
+      // Use deployed backend URL for production, localhost for development
+      const isLocalhost = typeof window !== 'undefined' && 
+        (window.location.hostname === 'localhost' || window.location.hostname.includes('192.168'));
+      
+      const apiUrl = isLocalhost 
+        ? `http://${window.location.hostname}:5000/chat/sessions`
+        : 'https://ptvmvy9qhn.us-east-1.awsapprunner.com/chat/sessions';
+      
+      const response = await fetch(apiUrl, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const sessionsData = await response.json();
+        // Transform backend response to frontend format
+        const transformedSessions: ChatSession[] = sessionsData.map((session: any) => ({
+          id: session.id,
+          title: session.title || 'Untitled Chat',
+          lastMessage: session.lastMessage || '',
+          timestamp: session.lastActivity || session.createdAt ? new Date(session.lastActivity || session.createdAt) : new Date(),
+          messageCount: session.messageCount || 0,
+        }));
+        setChatSessions(transformedSessions);
+      } else if (response.status === 401) {
+        console.log('Unauthorized - token may be expired');
+      } else {
+        console.error('Failed to load chat sessions:', response.statusText);
+      }
+    } catch (error) {
+      console.error('Error loading chat sessions:', error);
+    }
   }, []);
+
+  // Load chat sessions from backend on mount
+  useEffect(() => {
+    loadChatSessions();
+  }, [loadChatSessions]);
 
   const handleSendMessage = async () => {
     if (!inputValue.trim() || isLoading) return;
@@ -266,6 +267,14 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       };
 
       setMessages(prev => [...prev, aiMessage]);
+      
+      // Update sessionId in parent if it's in the response
+      if (response.sessionId && onSessionChange) {
+        onSessionChange(response.sessionId);
+      }
+      
+      // Refresh chat sessions list after sending message
+      await loadChatSessions();
     } catch (error) {
       console.error('Error sending message:', error);
       const errorMessage: Message = {
@@ -326,7 +335,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
           id: `${sessionId}-${index}`,
           content: msg.content,
           isUser: msg.role === 'user',
-          timestamp: new Date(msg.timestamp),
+          timestamp: msg.timestamp ? new Date(msg.timestamp) : new Date(),
           reasoning: msg.reasoning,
           analysis: msg.analysis,
           profile: msg.profile,
@@ -411,6 +420,9 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       };
       
       setMessages(prev => [...prev, aiMessage]);
+      
+      // Refresh chat sessions list after sending edited message
+      await loadChatSessions();
     } catch (error) {
       console.error('Error regenerating response:', error);
       const errorMessage: Message = {
