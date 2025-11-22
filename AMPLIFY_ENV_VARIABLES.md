@@ -135,3 +135,4 @@ None - everything is hardcoded or comes from Brandscaling website.
 
 **Optional** - Only if you want to make the backend URL configurable. It's not required.
 
+

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { colors, typography, spacing, borderRadius, shadows, motion } from '../design-tokens';
 import { MessageBubble } from './MessageBubble';
 import { TypingIndicator } from './TypingIndicator';
@@ -236,7 +236,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         console.log('✅ [ChatInterface] setChatSessions() called with', transformedSessions.length, 'sessions');
       } else if (response.status === 401) {
         console.warn('⚠️ [ChatInterface] Unauthorized - token may be expired');
-        console.warn('⚠️ [ChatInterface] Response headers:', [...response.headers.entries()]);
+        console.warn('⚠️ [ChatInterface] Response headers:', Object.fromEntries(response.headers.entries()));
       } else if (response.status === 404) {
         console.error('❌ [ChatInterface] Endpoint not found (404) - backend may not have /chat/sessions endpoint deployed');
         console.error('❌ [ChatInterface] API URL was:', apiUrl);
