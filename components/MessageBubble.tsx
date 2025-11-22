@@ -398,25 +398,40 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             opacity: 0.7,
           }}>
             {(() => {
-              console.log('📅 [MessageBubble] Rendering timestamp for message:', message.id);
-              console.log('📅 [MessageBubble] message.timestamp:', message.timestamp, 'type:', typeof message.timestamp);
-              if (!message.timestamp) {
-                console.warn('⚠️ [MessageBubble] No timestamp found');
+              try {
+                // Handle timestamp - it can be Date object or string
+                let timestamp = message.timestamp;
+                
+                // If timestamp is already a Date object, use it directly
+                if (timestamp instanceof Date) {
+                  const isValid = !isNaN(timestamp.getTime());
+                  if (isValid) {
+                    return timestamp.toLocaleTimeString([], { 
+                      hour: '2-digit', 
+                      minute: '2-digit' 
+                    });
+                  }
+                  return '';
+                }
+                
+                // If timestamp is a string or number, parse it
+                if (!timestamp) {
+                  return '';
+                }
+                
+                const date = new Date(timestamp);
+                const isValid = !isNaN(date.getTime());
+                
+                if (isValid) {
+                  return date.toLocaleTimeString([], { 
+                    hour: '2-digit', 
+                    minute: '2-digit' 
+                  });
+                }
+                
                 return '';
-              }
-              const date = new Date(message.timestamp);
-              console.log('📅 [MessageBubble] Parsed date:', date);
-              const isValid = !isNaN(date.getTime());
-              console.log('📅 [MessageBubble] Is valid date:', isValid);
-              if (isValid) {
-                const formatted = date.toLocaleTimeString([], { 
-                  hour: '2-digit', 
-                  minute: '2-digit' 
-                });
-                console.log('📅 [MessageBubble] Formatted time:', formatted);
-                return formatted;
-              } else {
-                console.error('❌ [MessageBubble] Invalid date - timestamp:', message.timestamp);
+              } catch (error) {
+                console.error('❌ [MessageBubble] Error formatting timestamp:', error, 'timestamp:', message.timestamp);
                 return '';
               }
             })()}

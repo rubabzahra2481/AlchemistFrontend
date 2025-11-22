@@ -205,6 +205,8 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         ? `http://${window.location.hostname}:5000/chat/sessions`
         : 'https://ptvmvy9qhn.us-east-1.awsapprunner.com/chat/sessions';
       
+      console.log('🌐 [ChatInterface] API URL for sessions:', apiUrl);
+      
       console.log('📡 [ChatInterface] Fetching sessions from:', apiUrl);
       const response = await fetch(apiUrl, {
         headers: {
@@ -216,6 +218,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       if (response.ok) {
         const sessionsData = await response.json();
         console.log('✅ [ChatInterface] Sessions data received:', sessionsData);
+        console.log('✅ [ChatInterface] Number of sessions:', sessionsData?.length || 0);
         // Transform backend response to frontend format
         const transformedSessions: ChatSession[] = sessionsData.map((session: any) => {
           const timestamp = session.lastActivity || session.createdAt;
@@ -233,8 +236,16 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         console.log('✅ [ChatInterface] setChatSessions() called with', transformedSessions.length, 'sessions');
       } else if (response.status === 401) {
         console.warn('⚠️ [ChatInterface] Unauthorized - token may be expired');
+        console.warn('⚠️ [ChatInterface] Response headers:', [...response.headers.entries()]);
+      } else if (response.status === 404) {
+        console.error('❌ [ChatInterface] Endpoint not found (404) - backend may not have /chat/sessions endpoint deployed');
+        console.error('❌ [ChatInterface] API URL was:', apiUrl);
+        console.error('❌ [ChatInterface] Response status:', response.status);
+        console.error('❌ [ChatInterface] This endpoint should exist in backend/src/controllers/chat.controller.ts');
       } else {
         console.error('❌ [ChatInterface] Failed to load chat sessions:', response.status, response.statusText);
+        const errorText = await response.text().catch(() => 'Could not read error');
+        console.error('❌ [ChatInterface] Error response:', errorText);
       }
     } catch (error) {
       console.error('❌ [ChatInterface] Error loading chat sessions:', error);
