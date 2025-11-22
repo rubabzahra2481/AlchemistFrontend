@@ -1,6 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { ChatInterface } from '../components/ChatInterface';
-import { listenForToken, requestTokenFromOpener, getStoredToken } from '../utils/token-handler';
+import { 
+  listenForToken, 
+  requestTokenFromOpener, 
+  getStoredToken,
+  startTokenRefreshTimer,
+  refreshTokenOn401
+} from '../utils/token-handler';
 
 export default function Home() {
   const [sessionId, setSessionId] = useState<string | undefined>(undefined);
@@ -9,24 +15,28 @@ export default function Home() {
 
   // Secure token handling using postMessage API
   useEffect(() => {
+    let tokenRefreshCleanup: (() => void) | null = null;
+
     // Check if token already exists in localStorage
     const existingToken = getStoredToken();
     if (existingToken) {
       setIsAuthenticated(true);
-      return;
-    }
-
-    // Check if token was passed via sessionStorage (same-origin redirect)
-    if (typeof window !== 'undefined') {
-      const tempToken = sessionStorage.getItem('supabase_token_temp');
-      if (tempToken) {
-        // Store token securely in localStorage
-        localStorage.setItem('supabase_token', tempToken);
-        localStorage.setItem('supabase_token_timestamp', Date.now().toString());
-        // Clean up sessionStorage
-        sessionStorage.removeItem('supabase_token_temp');
-        setIsAuthenticated(true);
-        return;
+      // Start proactive token refresh timer
+      tokenRefreshCleanup = startTokenRefreshTimer(10, 5); // Refresh if within 10 min of expiration, check every 5 min
+    } else {
+      // Check if token was passed via sessionStorage (same-origin redirect)
+      if (typeof window !== 'undefined') {
+        const tempToken = sessionStorage.getItem('supabase_token_temp');
+        if (tempToken) {
+          // Store token securely in localStorage
+          localStorage.setItem('supabase_token', tempToken);
+          localStorage.setItem('supabase_token_timestamp', Date.now().toString());
+          // Clean up sessionStorage
+          sessionStorage.removeItem('supabase_token_temp');
+          setIsAuthenticated(true);
+          // Start proactive token refresh timer
+          tokenRefreshCleanup = startTokenRefreshTimer(10, 5);
+        }
       }
     }
 
@@ -35,6 +45,14 @@ export default function Home() {
       if (token) {
         setIsAuthenticated(true);
         setAuthError(null);
+        
+        // Stop existing timer if any
+        if (tokenRefreshCleanup) {
+          tokenRefreshCleanup();
+        }
+        
+        // Start proactive token refresh timer after receiving token
+        tokenRefreshCleanup = startTokenRefreshTimer(10, 5);
       }
     });
 
@@ -43,9 +61,10 @@ export default function Home() {
       requestTokenFromOpener();
     }
 
-    // Cleanup listener on unmount
+    // Cleanup listener and timer on unmount
     return () => {
       if (cleanup) cleanup();
+      if (tokenRefreshCleanup) tokenRefreshCleanup();
     };
   }, []);
 
@@ -67,37 +86,67 @@ export default function Home() {
         ? `http://${window.location.hostname}:5000/chat`
         : 'https://ptvmvy9qhn.us-east-1.awsapprunner.com/chat';
       
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`, // ✅ Send token to backend
-        },
-        body: JSON.stringify({
-          message,
-          sessionId,
-          selectedLLM: selectedLLM || 'gpt-4o',
-        }),
-      });
+      // Wrap API call in refresh handler for automatic 401 retry
+      const makeApiCall = async (authToken: string) => {
+        const response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${authToken}`,
+          },
+          body: JSON.stringify({
+            message,
+            sessionId,
+            selectedLLM: selectedLLM || 'gpt-4o',
+          }),
+        });
 
-      if (!response.ok) {
-        if (response.status === 401) {
-          // Token expired or invalid - redirect to login
-          throw new Error('Authentication failed. Please log in again on the company website.');
+        if (!response.ok) {
+          if (response.status === 401) {
+            // Token expired - try to refresh
+            console.log('🔄 [Chat] Token expired, attempting refresh...');
+            throw new Error('TOKEN_EXPIRED'); // Special error for refresh handler
+          }
+          throw new Error(`Failed to send message: ${response.status} ${response.statusText}`);
         }
-        throw new Error('Failed to send message');
-      }
 
-      const data = await response.json();
-      
-      // Set session ID from response if not already set
-      if (!sessionId && data.sessionId) {
-        setSessionId(data.sessionId);
-      }
+        return await response.json();
+      };
 
-      return data;
-    } catch (error) {
+      try {
+        const data = await makeApiCall(token);
+        
+        // Set session ID from response if not already set
+        if (!sessionId && data.sessionId) {
+          setSessionId(data.sessionId);
+        }
+
+        return data;
+      } catch (error: any) {
+        // Handle 401 with automatic refresh and retry
+        if (error.message === 'TOKEN_EXPIRED') {
+          console.log('🔄 [Chat] Refreshing token and retrying...');
+          const data = await refreshTokenOn401(makeApiCall);
+          
+          // Set session ID from response if not already set
+          if (!sessionId && data.sessionId) {
+            setSessionId(data.sessionId);
+          }
+
+          return data;
+        }
+        throw error;
+      }
+    } catch (error: any) {
       console.error('Error sending message:', error);
+      
+      // Show user-friendly error message
+      if (error.message?.includes('Token refresh failed')) {
+        setAuthError('Your session has expired. Please log in again on the company website.');
+      } else if (error.message?.includes('Authentication')) {
+        setAuthError(error.message);
+      }
+      
       throw error;
     }
   };

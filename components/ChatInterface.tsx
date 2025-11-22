@@ -7,6 +7,7 @@ import { TypingIndicator } from './TypingIndicator';
 import { AICreditsBar } from './AICreditsBar';
 import { ChatHistorySidebar, ChatSession } from './ChatHistorySidebar';
 import { LLMSelector, LLMModel } from './LLMSelector';
+import { refreshTokenOn401, getStoredToken } from '../utils/token-handler';
 // import { PsychologicalProfileDebug } from './PsychologicalProfileDebug'; // COMMENTED OUT FOR PRODUCTION
 
 export interface Message {
@@ -80,9 +81,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
       try {
         // Get Supabase token from localStorage
-        const token = typeof window !== 'undefined' 
-          ? localStorage.getItem('supabase_token') || localStorage.getItem('sb_token')
-          : null;
+        const token = getStoredToken();
 
         if (!token) {
           console.log('No token available - skipping history load');
@@ -97,36 +96,56 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
           ? `http://${window.location.hostname}:5000/chat/session/${sessionId}/history`
           : `https://ptvmvy9qhn.us-east-1.awsapprunner.com/chat/session/${sessionId}/history`;
         
-        const response = await fetch(apiUrl, {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        });
+        // Wrap API call for 401 refresh handling
+        const makeHistoryCall = async (authToken: string) => {
+          const response = await fetch(apiUrl, {
+            headers: {
+              'Authorization': `Bearer ${authToken}`,
+            },
+          });
 
-        if (response.ok) {
-          const historyData = await response.json();
-        // Transform backend messages to frontend format
-        const transformedMessages: Message[] = historyData.map((msg: any, index: number) => {
-          console.log('📥 [ChatInterface] Loading message from session select:', msg.role, 'timestamp:', msg.timestamp, 'type:', typeof msg.timestamp);
-          const timestamp = msg.timestamp ? new Date(msg.timestamp) : new Date();
-          console.log('📥 [ChatInterface] Parsed timestamp:', timestamp, 'isValid:', !isNaN(timestamp.getTime()));
-          return {
-            id: `${sessionId}-${index}`,
-            content: msg.content,
-            isUser: msg.role === 'user',
-            timestamp: timestamp,
-            reasoning: msg.reasoning,
-            analysis: msg.analysis,
-            profile: msg.profile,
-          };
-        });
-        console.log('✅ [ChatInterface] Transformed messages for session:', transformedMessages);
-        setMessages(transformedMessages);
-        } else if (response.status === 404) {
-          // Session doesn't exist yet - this is fine for new sessions
-          setMessages([]);
-        } else {
-          console.error('Failed to load chat history:', response.statusText);
+          if (response.ok) {
+            const historyData = await response.json();
+            // Transform backend messages to frontend format
+            const transformedMessages: Message[] = historyData.map((msg: any, index: number) => {
+              console.log('📥 [ChatInterface] Loading message from session select:', msg.role, 'timestamp:', msg.timestamp, 'type:', typeof msg.timestamp);
+              const timestamp = msg.timestamp ? new Date(msg.timestamp) : new Date();
+              console.log('📥 [ChatInterface] Parsed timestamp:', timestamp, 'isValid:', !isNaN(timestamp.getTime()));
+              return {
+                id: `${sessionId}-${index}`,
+                content: msg.content,
+                isUser: msg.role === 'user',
+                timestamp: timestamp,
+                reasoning: msg.reasoning,
+                analysis: msg.analysis,
+                profile: msg.profile,
+              };
+            });
+            console.log('✅ [ChatInterface] Transformed messages for session:', transformedMessages);
+            setMessages(transformedMessages);
+            return transformedMessages;
+          } else if (response.status === 404) {
+            // Session doesn't exist yet - this is fine for new sessions
+            setMessages([]);
+            return [];
+          } else if (response.status === 401) {
+            // Token expired - signal for refresh handler
+            throw new Error('TOKEN_EXPIRED');
+          } else {
+            throw new Error(`Failed to load chat history: ${response.status} ${response.statusText}`);
+          }
+        };
+
+        try {
+          await makeHistoryCall(token);
+        } catch (error: any) {
+          // Handle 401 with automatic refresh and retry
+          if (error.message === 'TOKEN_EXPIRED') {
+            console.log('🔄 [ChatInterface] Token expired, refreshing and retrying history load...');
+            await refreshTokenOn401(makeHistoryCall);
+          } else {
+            console.error('Failed to load chat history:', error);
+          }
         }
       } catch (error) {
         console.error('Error loading chat history:', error);
@@ -141,9 +160,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     const fetchAvailableModels = async () => {
       try {
         // Get Supabase token from localStorage
-        const token = typeof window !== 'undefined' 
-          ? localStorage.getItem('supabase_token') || localStorage.getItem('sb_token')
-          : null;
+        const token = getStoredToken();
 
         // Use deployed backend URL for production, localhost for development
         const isLocalhost = typeof window !== 'undefined' && 
@@ -188,9 +205,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     console.log('🔄 [ChatInterface] loadChatSessions() called');
     try {
       // Get Supabase token from localStorage
-      const token = typeof window !== 'undefined' 
-        ? localStorage.getItem('supabase_token') || localStorage.getItem('sb_token')
-        : null;
+      const token = getStoredToken();
 
       if (!token) {
         console.warn('⚠️ [ChatInterface] No token available - skipping session load');
@@ -237,6 +252,38 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       } else if (response.status === 401) {
         console.warn('⚠️ [ChatInterface] Unauthorized - token may be expired');
         console.warn('⚠️ [ChatInterface] Response headers:', Object.fromEntries(response.headers.entries()));
+        
+        // Try to refresh token and retry
+        try {
+          console.log('🔄 [ChatInterface] Attempting to refresh token and retry...');
+          await refreshTokenOn401(async (newToken: string) => {
+            const retryResponse = await fetch(apiUrl, {
+              headers: {
+                'Authorization': `Bearer ${newToken}`,
+              },
+            });
+            
+            if (retryResponse.ok) {
+              const sessionsData = await retryResponse.json();
+              const transformedSessions: ChatSession[] = sessionsData.map((session: any) => {
+                const timestamp = session.lastActivity || session.createdAt;
+                return {
+                  id: session.id,
+                  title: session.title || 'Untitled Chat',
+                  lastMessage: session.lastMessage || '',
+                  timestamp: timestamp ? new Date(timestamp) : new Date(),
+                  messageCount: session.messageCount || 0,
+                };
+              });
+              setChatSessions(transformedSessions);
+              console.log('✅ [ChatInterface] Sessions loaded after token refresh');
+            } else {
+              throw new Error(`Failed to load sessions after refresh: ${retryResponse.status}`);
+            }
+          });
+        } catch (error) {
+          console.error('❌ [ChatInterface] Failed to refresh token and retry:', error);
+        }
       } else if (response.status === 404) {
         console.error('❌ [ChatInterface] Endpoint not found (404) - backend may not have /chat/sessions endpoint deployed');
         console.error('❌ [ChatInterface] API URL was:', apiUrl);

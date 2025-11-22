@@ -150,5 +150,211 @@ export function getStoredToken(): string | null {
 export function clearStoredToken() {
   localStorage.removeItem('supabase_token');
   localStorage.removeItem('supabase_token_timestamp');
+  localStorage.removeItem('supabase_refresh_token');
+  localStorage.removeItem('supabase_user');
+}
+
+/**
+ * Get token age in milliseconds
+ */
+export function getTokenAge(): number | null {
+  if (typeof window === 'undefined') return null;
+  
+  const timestamp = localStorage.getItem('supabase_token_timestamp');
+  if (!timestamp) return null;
+  
+  return Date.now() - parseInt(timestamp, 10);
+}
+
+/**
+ * Check if token is about to expire (within threshold)
+ */
+export function isTokenExpiringSoon(thresholdMinutes: number = 10): boolean {
+  const tokenAge = getTokenAge();
+  if (tokenAge === null) return true; // No token = treat as expired
+  
+  const thresholdMs = thresholdMinutes * 60 * 1000;
+  const maxAge = 60 * 60 * 1000; // 1 hour in milliseconds
+  
+  // Token is expiring soon if it's within threshold of max age
+  return tokenAge > (maxAge - thresholdMs);
+}
+
+/**
+ * Request a fresh token from Brandscaling via postMessage
+ * Returns a Promise that resolves with the new token or rejects if refresh fails
+ */
+export function requestFreshToken(): Promise<string> {
+  return new Promise((resolve, reject) => {
+    // Set timeout for refresh request (30 seconds)
+    const timeout = setTimeout(() => {
+      reject(new Error('Token refresh request timed out'));
+    }, 30000);
+
+    // Listen for token response
+    const handleTokenResponse = (event: MessageEvent<TokenMessage>) => {
+      const allowedOrigins = [
+        'https://www.brandscaling.co.uk',
+        'https://brandscaling.co.uk',
+        'https://brandscaling.com',
+        'https://www.brandscaling.com',
+        'http://localhost:3000',
+        'http://localhost:3001',
+        'http://localhost:3002',
+        'http://localhost:8000',
+      ];
+
+      if (!allowedOrigins.includes(event.origin)) {
+        return; // Ignore messages from untrusted origins
+      }
+
+      if (event.data && (event.data.type === 'SUPABASE_TOKEN' || event.data.type === 'SUPABASE_AUTH')) {
+        let token: string | null = null;
+
+        if (event.data.type === 'SUPABASE_TOKEN' && typeof event.data.token === 'string') {
+          token = event.data.token;
+        } else if (event.data.type === 'SUPABASE_AUTH' && typeof event.data.accessToken === 'string') {
+          token = event.data.accessToken;
+          
+          if (event.data.refreshToken) {
+            localStorage.setItem('supabase_refresh_token', event.data.refreshToken);
+          }
+          if (event.data.user) {
+            localStorage.setItem('supabase_user', JSON.stringify(event.data.user));
+          }
+        }
+
+        if (token) {
+          // Store new token
+          localStorage.setItem('supabase_token', token);
+          localStorage.setItem('supabase_token_timestamp', Date.now().toString());
+          
+          clearTimeout(timeout);
+          window.removeEventListener('message', handleTokenResponse);
+          resolve(token);
+        }
+      }
+    };
+
+    window.addEventListener('message', handleTokenResponse);
+
+    // Request fresh token from Brandscaling
+    if (window.opener) {
+      // Popup scenario
+      window.opener.postMessage(
+        {
+          type: 'REQUEST_FRESH_TOKEN',
+          target: window.location.origin,
+        },
+        '*'
+      );
+    } else if (window.self !== window.top && window.parent) {
+      // Iframe scenario
+      window.parent.postMessage(
+        {
+          type: 'REQUEST_FRESH_TOKEN',
+          target: window.location.origin,
+        },
+        '*'
+      );
+    } else {
+      // Standalone window - try to send to parent/opener
+      window.postMessage(
+        {
+          type: 'REQUEST_FRESH_TOKEN',
+          target: window.location.origin,
+        },
+        '*'
+      );
+    }
+  });
+}
+
+/**
+ * Refresh token on 401 error (fallback mechanism)
+ * Tries to get fresh token from Brandscaling and retries the failed request
+ */
+export async function refreshTokenOn401<T>(
+  apiCall: (token: string) => Promise<T>
+): Promise<T> {
+  console.log('🔄 [Token] Attempting to refresh token after 401 error...');
+  
+  try {
+    // Request fresh token from Brandscaling
+    const newToken = await requestFreshToken();
+    console.log('✅ [Token] Token refreshed successfully');
+    
+    // Retry the API call with new token
+    return await apiCall(newToken);
+  } catch (error) {
+    console.error('❌ [Token] Failed to refresh token:', error);
+    throw new Error('Token refresh failed. Please log in again on the company website.');
+  }
+}
+
+/**
+ * Start proactive token refresh timer
+ * Checks token age periodically and refreshes before expiration
+ * @param refreshThresholdMinutes - Refresh if token is within this many minutes of expiring (default: 10)
+ * @param checkIntervalMinutes - How often to check token age (default: 5)
+ * @returns Cleanup function to stop the timer
+ */
+export function startTokenRefreshTimer(
+  refreshThresholdMinutes: number = 10,
+  checkIntervalMinutes: number = 5
+): () => void {
+  if (typeof window === 'undefined') {
+    return () => {}; // SSR - no timer needed
+  }
+
+  console.log('⏰ [Token] Starting proactive token refresh timer');
+  
+  const checkInterval = checkIntervalMinutes * 60 * 1000; // Convert to milliseconds
+  let refreshInProgress = false;
+
+  const checkAndRefresh = async () => {
+    // Skip if refresh is already in progress
+    if (refreshInProgress) {
+      console.log('⏳ [Token] Token refresh already in progress, skipping check');
+      return;
+    }
+
+    const token = getStoredToken();
+    if (!token) {
+      console.log('⚠️ [Token] No token found, skipping refresh check');
+      return;
+    }
+
+    if (isTokenExpiringSoon(refreshThresholdMinutes)) {
+      console.log('🔄 [Token] Token expiring soon, refreshing proactively...');
+      refreshInProgress = true;
+
+      try {
+        await requestFreshToken();
+        console.log('✅ [Token] Token refreshed proactively');
+      } catch (error) {
+        console.warn('⚠️ [Token] Proactive token refresh failed:', error);
+        // Don't throw - fallback to 401 refresh will handle it
+      } finally {
+        refreshInProgress = false;
+      }
+    } else {
+      const tokenAge = getTokenAge();
+      const ageMinutes = tokenAge ? Math.floor(tokenAge / 60000) : 0;
+      console.log(`✅ [Token] Token still valid (${ageMinutes} minutes old)`);
+    }
+  };
+
+  // Check immediately on start
+  checkAndRefresh();
+
+  // Set up interval
+  const intervalId = setInterval(checkAndRefresh, checkInterval);
+
+  // Return cleanup function
+  return () => {
+    console.log('🛑 [Token] Stopping token refresh timer');
+    clearInterval(intervalId);
+  };
 }
 
