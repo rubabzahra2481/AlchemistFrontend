@@ -19,6 +19,8 @@ interface ChatHistorySidebarProps {
   activeSessionId?: string;
   onSessionSelect: (sessionId: string) => void;
   onNewChat: () => void;
+  isLoading?: boolean;
+  authTimeout?: boolean;
 }
 
 export const ChatHistorySidebar: React.FC<ChatHistorySidebarProps> = ({
@@ -28,6 +30,8 @@ export const ChatHistorySidebar: React.FC<ChatHistorySidebarProps> = ({
   activeSessionId,
   onSessionSelect,
   onNewChat,
+  isLoading = false,
+  authTimeout = false,
 }) => {
   const formatTimestamp = (date: Date) => {
     const now = new Date();
@@ -183,7 +187,85 @@ export const ChatHistorySidebar: React.FC<ChatHistorySidebarProps> = ({
             padding: '8px 0',
           }}
         >
-          {sessions.length === 0 ? (
+          {isLoading && sessions.length === 0 ? (
+            // Loading state (Option 1)
+            <div
+              style={{
+                padding: spacing.containerPadding.desktop,
+                textAlign: 'center',
+                color: colors.deepPlum,
+              }}
+            >
+              <div
+                style={{
+                  width: '48px',
+                  height: '48px',
+                  borderRadius: '50%',
+                  background: `${colors.architectIndigo}20`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  margin: '0 auto 16px',
+                  animation: 'spin 1s linear infinite',
+                }}
+              >
+                <span style={{ fontSize: '20px' }}>⏳</span>
+              </div>
+              <p
+                style={{
+                  fontFamily: typography.caption.fontFamily, fontSize: "16px", lineHeight: typography.caption.lineHeight,
+                  color: colors.deepPlum,
+                  margin: 0,
+                }}
+              >
+                Loading your chat history...
+              </p>
+            </div>
+          ) : authTimeout ? (
+            // Timeout message (Option 2)
+            <div
+              style={{
+                padding: spacing.containerPadding.desktop,
+                textAlign: 'center',
+                color: colors.deepPlum,
+              }}
+            >
+              <div
+                style={{
+                  width: '48px',
+                  height: '48px',
+                  borderRadius: '50%',
+                  background: `${colors.precisionPink}20`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  margin: '0 auto 16px',
+                }}
+              >
+                <span style={{ fontSize: '20px' }}>🔐</span>
+              </div>
+              <p
+                style={{
+                  fontFamily: typography.caption.fontFamily, fontSize: "14px", lineHeight: typography.caption.lineHeight,
+                  color: colors.deepPlum,
+                  margin: '0 0 8px 0',
+                }}
+              >
+                Waiting for authentication...
+              </p>
+              <p
+                style={{
+                  fontFamily: typography.caption.fontFamily, fontSize: "12px", lineHeight: typography.caption.lineHeight,
+                  color: colors.deepPlum,
+                  opacity: 0.7,
+                  margin: 0,
+                }}
+              >
+                If this persists, please refresh.
+              </p>
+            </div>
+          ) : sessions.length === 0 ? (
+            // Empty state (no sessions)
             <div
               style={{
                 padding: spacing.containerPadding.desktop,

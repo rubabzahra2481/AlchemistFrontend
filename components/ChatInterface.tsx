@@ -43,6 +43,8 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const [editedContent, setEditedContent] = useState('');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
+  const [isLoadingSessions, setIsLoadingSessions] = useState(false);
+  const [sessionsAuthTimeout, setSessionsAuthTimeout] = useState(false);
   const [selectedLLM, setSelectedLLM] = useState<string>('gpt-4o');
   const [availableModels, setAvailableModels] = useState<LLMModel[]>([]);
   const [isLoadingModels, setIsLoadingModels] = useState(true);
@@ -50,6 +52,10 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const [latestAnalysis, setLatestAnalysis] = useState<any>(null);
   const [isMobile, setIsMobile] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  
+  // Cache key for localStorage
+  const SESSIONS_CACHE_KEY = 'chat_sessions_cache';
+  const SESSIONS_CACHE_TIMESTAMP_KEY = 'chat_sessions_cache_timestamp';
 
   // Detect mobile viewport
   useEffect(() => {
@@ -200,15 +206,57 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     fetchAvailableModels();
   }, []);
 
+  // Load cached sessions from localStorage
+  const loadCachedSessions = useCallback((): ChatSession[] => {
+    try {
+      if (typeof window === 'undefined') return [];
+      
+      const cachedData = localStorage.getItem(SESSIONS_CACHE_KEY);
+      if (!cachedData) return [];
+      
+      const sessions: ChatSession[] = JSON.parse(cachedData).map((session: any) => ({
+        ...session,
+        timestamp: new Date(session.timestamp), // Convert back to Date object
+      }));
+      
+      console.log('📦 [ChatInterface] Loaded cached sessions:', sessions.length);
+      return sessions;
+    } catch (error) {
+      console.error('❌ [ChatInterface] Error loading cached sessions:', error);
+      return [];
+    }
+  }, []);
+
+  // Cache sessions to localStorage
+  const cacheSessions = useCallback((sessions: ChatSession[]) => {
+    try {
+      if (typeof window === 'undefined') return;
+      
+      localStorage.setItem(SESSIONS_CACHE_KEY, JSON.stringify(sessions));
+      localStorage.setItem(SESSIONS_CACHE_TIMESTAMP_KEY, Date.now().toString());
+      console.log('💾 [ChatInterface] Cached sessions to localStorage:', sessions.length);
+    } catch (error) {
+      console.error('❌ [ChatInterface] Error caching sessions:', error);
+    }
+  }, []);
+
   // Load chat sessions function (extracted for reuse)
-  const loadChatSessions = useCallback(async () => {
+  const loadChatSessions = useCallback(async (showLoading: boolean = true) => {
     console.log('🔄 [ChatInterface] loadChatSessions() called');
+    
+    if (showLoading) {
+      setIsLoadingSessions(true);
+    }
+    
     try {
       // Get Supabase token from localStorage
       const token = getStoredToken();
 
       if (!token) {
         console.warn('⚠️ [ChatInterface] No token available - skipping session load');
+        if (showLoading) {
+          setIsLoadingSessions(false);
+        }
         return;
       }
 
@@ -248,7 +296,11 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         });
         console.log('✅ [ChatInterface] Transformed sessions:', transformedSessions);
         setChatSessions(transformedSessions);
+        // Cache sessions for next visit
+        cacheSessions(transformedSessions);
         console.log('✅ [ChatInterface] setChatSessions() called with', transformedSessions.length, 'sessions');
+        setIsLoadingSessions(false);
+        setSessionsAuthTimeout(false); // Clear timeout flag on success
       } else if (response.status === 401) {
         console.warn('⚠️ [ChatInterface] Unauthorized - token may be expired');
         console.warn('⚠️ [ChatInterface] Response headers:', Object.fromEntries(response.headers.entries()));
@@ -276,7 +328,11 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 };
               });
               setChatSessions(transformedSessions);
+              // Cache refreshed sessions
+              cacheSessions(transformedSessions);
               console.log('✅ [ChatInterface] Sessions loaded after token refresh');
+              setIsLoadingSessions(false);
+              setSessionsAuthTimeout(false);
             } else {
               throw new Error(`Failed to load sessions after refresh: ${retryResponse.status}`);
             }
@@ -293,17 +349,65 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         console.error('❌ [ChatInterface] Failed to load chat sessions:', response.status, response.statusText);
         const errorText = await response.text().catch(() => 'Could not read error');
         console.error('❌ [ChatInterface] Error response:', errorText);
+        setIsLoadingSessions(false);
       }
     } catch (error) {
       console.error('❌ [ChatInterface] Error loading chat sessions:', error);
+      setIsLoadingSessions(false);
     }
-  }, []);
+  }, [cacheSessions]);
 
-  // Load chat sessions from backend on mount
+  // Option 5 (Hybrid): Load cached sessions on mount, then poll for token and refresh
   useEffect(() => {
-    console.log('🚀 [ChatInterface] Component mounted - loading chat sessions');
-    loadChatSessions();
-  }, [loadChatSessions]);
+    console.log('🚀 [ChatInterface] Component mounted - implementing Option 5 Hybrid');
+    
+    let pollInterval: NodeJS.Timeout | null = null;
+    
+    // Step 1: Load cached sessions immediately (Option 4)
+    const cachedSessions = loadCachedSessions();
+    if (cachedSessions.length > 0) {
+      console.log('📦 [ChatInterface] Showing cached sessions immediately:', cachedSessions.length);
+      setChatSessions(cachedSessions);
+    }
+    
+    // Step 2: Check if token is already available
+    const token = getStoredToken();
+    if (token) {
+      // Token available immediately - load fresh sessions
+      console.log('✅ [ChatInterface] Token available - loading fresh sessions');
+      loadChatSessions(true);
+    } else {
+      // Step 3: Start polling for token (Option 3)
+      console.log('⏳ [ChatInterface] Token not available - starting polling');
+      setIsLoadingSessions(true);
+      
+      let pollCount = 0;
+      const maxPolls = 15; // 15 seconds max (15 polls × 1 second)
+      pollInterval = setInterval(() => {
+        pollCount++;
+        const currentToken = getStoredToken();
+        
+        if (currentToken) {
+          // Token arrived - load fresh sessions
+          console.log('✅ [ChatInterface] Token detected after polling - loading fresh sessions');
+          if (pollInterval) clearInterval(pollInterval);
+          loadChatSessions(true);
+          setIsLoadingSessions(false);
+        } else if (pollCount >= maxPolls) {
+          // Timeout reached - show auth message (Option 2)
+          console.warn('⏰ [ChatInterface] Token polling timeout - showing auth message');
+          if (pollInterval) clearInterval(pollInterval);
+          setIsLoadingSessions(false);
+          setSessionsAuthTimeout(true);
+        }
+      }, 1000); // Poll every 1 second
+    }
+    
+    // Cleanup on unmount
+    return () => {
+      if (pollInterval) clearInterval(pollInterval);
+    };
+  }, [loadCachedSessions, loadChatSessions]);
 
   const handleSendMessage = async () => {
     if (!inputValue.trim() || isLoading) return;
@@ -355,9 +459,9 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         onSessionChange(response.sessionId);
       }
       
-      // Refresh chat sessions list after sending message
+      // Refresh chat sessions list after sending message (don't show loading state)
       console.log('🔄 [ChatInterface] Refreshing chat sessions list...');
-      await loadChatSessions();
+      await loadChatSessions(false); // false = don't show loading state
       console.log('✅ [ChatInterface] Chat sessions refreshed');
     } catch (error) {
       console.error('Error sending message:', error);
@@ -510,8 +614,8 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       
       setMessages(prev => [...prev, aiMessage]);
       
-      // Refresh chat sessions list after sending edited message
-      await loadChatSessions();
+      // Refresh chat sessions list after sending edited message (don't show loading state)
+      await loadChatSessions(false); // false = don't show loading state
     } catch (error) {
       console.error('Error regenerating response:', error);
       const errorMessage: Message = {
@@ -829,6 +933,8 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         activeSessionId={sessionId}
         onSessionSelect={handleSessionSelect}
         onNewChat={handleNewChat}
+        isLoading={isLoadingSessions}
+        authTimeout={sessionsAuthTimeout}
       />
 
       {/* Psychological Profile Debug Panel - COMMENTED OUT FOR PRODUCTION */}
