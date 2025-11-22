@@ -24,12 +24,14 @@ interface ChatInterfaceProps {
   onSendMessage: (message: string, selectedLLM?: string) => Promise<any>;
   sessionId?: string;
   onNewChat?: () => void; // Add callback to reset session in parent
+  onSessionChange?: (sessionId: string) => void; // Add callback to update session in parent
 }
 
 export const ChatInterface: React.FC<ChatInterfaceProps> = ({ 
   onSendMessage, 
   sessionId,
-  onNewChat: onNewChatProp
+  onNewChat: onNewChatProp,
+  onSessionChange
 }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
@@ -67,10 +69,76 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     }
   }, [messages]);
 
+  // Load chat history when sessionId changes (e.g., when user returns to an existing session)
+  useEffect(() => {
+    const loadChatHistory = async () => {
+      if (!sessionId) {
+        // No session ID - clear messages for new chat
+        setMessages([]);
+        return;
+      }
+
+      try {
+        // Get Supabase token from localStorage
+        const token = typeof window !== 'undefined' 
+          ? localStorage.getItem('supabase_token') || localStorage.getItem('sb_token')
+          : null;
+
+        if (!token) {
+          console.log('No token available - skipping history load');
+          return;
+        }
+
+        // Use deployed backend URL for production, localhost for development
+        const isLocalhost = typeof window !== 'undefined' && 
+          (window.location.hostname === 'localhost' || window.location.hostname.includes('192.168'));
+        
+        const apiUrl = isLocalhost 
+          ? `http://${window.location.hostname}:5000/chat/session/${sessionId}/history`
+          : `https://ptvmvy9qhn.us-east-1.awsapprunner.com/chat/session/${sessionId}/history`;
+        
+        const response = await fetch(apiUrl, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        });
+
+        if (response.ok) {
+          const historyData = await response.json();
+          // Transform backend messages to frontend format
+          const transformedMessages: Message[] = historyData.map((msg: any, index: number) => ({
+            id: `${sessionId}-${index}`,
+            content: msg.content,
+            isUser: msg.role === 'user',
+            timestamp: new Date(msg.timestamp),
+            reasoning: msg.reasoning,
+            analysis: msg.analysis,
+            profile: msg.profile,
+          }));
+          setMessages(transformedMessages);
+        } else if (response.status === 404) {
+          // Session doesn't exist yet - this is fine for new sessions
+          setMessages([]);
+        } else {
+          console.error('Failed to load chat history:', response.statusText);
+        }
+      } catch (error) {
+        console.error('Error loading chat history:', error);
+      }
+    };
+
+    loadChatHistory();
+  }, [sessionId]);
+
   // Fetch available LLM models
   useEffect(() => {
     const fetchAvailableModels = async () => {
       try {
+        // Get Supabase token from localStorage
+        const token = typeof window !== 'undefined' 
+          ? localStorage.getItem('supabase_token') || localStorage.getItem('sb_token')
+          : null;
+
         // Use deployed backend URL for production, localhost for development
         const isLocalhost = typeof window !== 'undefined' && 
           (window.location.hostname === 'localhost' || window.location.hostname.includes('192.168'));
@@ -79,7 +147,12 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
           ? `http://${window.location.hostname}:5000/chat/llms`
           : 'https://ptvmvy9qhn.us-east-1.awsapprunner.com/chat/llms';
         
-        const response = await fetch(apiUrl);
+        const headers: HeadersInit = {};
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`; // ✅ Send token for authenticated endpoints
+        }
+        
+        const response = await fetch(apiUrl, { headers });
         if (response.ok) {
           const data = await response.json();
           setAvailableModels(data.models || []);
@@ -104,39 +177,56 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     fetchAvailableModels();
   }, []);
 
-  // Mock chat sessions data - replace with real data later
+  // Load chat sessions from backend
   useEffect(() => {
-    const mockSessions: ChatSession[] = [
-      {
-        id: 'session-1',
-        title: 'Career Advice Discussion',
-        lastMessage: 'Thank you for the insights about my personality traits...',
-        timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000), // 2 hours ago
-        messageCount: 8,
-      },
-      {
-        id: 'session-2',
-        title: 'Stress Management Help',
-        lastMessage: 'I\'ve been feeling overwhelmed with work lately...',
-        timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000), // 1 day ago
-        messageCount: 12,
-      },
-      {
-        id: 'session-3',
-        title: 'Relationship Guidance',
-        lastMessage: 'How can I improve my communication with my partner?',
-        timestamp: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000), // 3 days ago
-        messageCount: 15,
-      },
-      {
-        id: 'session-4',
-        title: 'Personal Growth Planning',
-        lastMessage: 'What are some steps I can take to develop my emotional intelligence?',
-        timestamp: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000), // 1 week ago
-        messageCount: 6,
-      },
-    ];
-    setChatSessions(mockSessions);
+    const loadChatSessions = async () => {
+      try {
+        // Get Supabase token from localStorage
+        const token = typeof window !== 'undefined' 
+          ? localStorage.getItem('supabase_token') || localStorage.getItem('sb_token')
+          : null;
+
+        if (!token) {
+          console.log('No token available - skipping session load');
+          return;
+        }
+
+        // Use deployed backend URL for production, localhost for development
+        const isLocalhost = typeof window !== 'undefined' && 
+          (window.location.hostname === 'localhost' || window.location.hostname.includes('192.168'));
+        
+        const apiUrl = isLocalhost 
+          ? `http://${window.location.hostname}:5000/chat/sessions`
+          : 'https://ptvmvy9qhn.us-east-1.awsapprunner.com/chat/sessions';
+        
+        const response = await fetch(apiUrl, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        });
+
+        if (response.ok) {
+          const sessionsData = await response.json();
+          // Transform backend response to frontend format
+          const transformedSessions: ChatSession[] = sessionsData.map((session: any) => ({
+            id: session.id,
+            title: session.title || 'Untitled Chat',
+            lastMessage: session.lastMessage || '',
+            timestamp: new Date(session.lastActivity || session.createdAt),
+            messageCount: session.messageCount || 0,
+          }));
+          setChatSessions(transformedSessions);
+        } else if (response.status === 401) {
+          console.log('Unauthorized - token may be expired');
+        } else {
+          console.error('Failed to load chat sessions:', response.statusText);
+        }
+      } catch (error) {
+        console.error('Error loading chat sessions:', error);
+      }
+    };
+
+    loadChatSessions();
   }, []);
 
   const handleSendMessage = async () => {
@@ -201,10 +291,57 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     setIsSidebarOpen(!isSidebarOpen);
   };
 
-  const handleSessionSelect = (sessionId: string) => {
-    // TODO: Load session data from backend
-    console.log('Loading session:', sessionId);
+  const handleSessionSelect = async (sessionId: string) => {
     setIsSidebarOpen(false);
+    
+    try {
+      // Get Supabase token from localStorage
+      const token = typeof window !== 'undefined' 
+        ? localStorage.getItem('supabase_token') || localStorage.getItem('sb_token')
+        : null;
+
+      if (!token) {
+        console.error('No token available - cannot load session');
+        return;
+      }
+
+      // Use deployed backend URL for production, localhost for development
+      const isLocalhost = typeof window !== 'undefined' && 
+        (window.location.hostname === 'localhost' || window.location.hostname.includes('192.168'));
+      
+      const apiUrl = isLocalhost 
+        ? `http://${window.location.hostname}:5000/chat/session/${sessionId}/history`
+        : `https://ptvmvy9qhn.us-east-1.awsapprunner.com/chat/session/${sessionId}/history`;
+      
+      const response = await fetch(apiUrl, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const historyData = await response.json();
+        // Transform backend messages to frontend format
+        const transformedMessages: Message[] = historyData.map((msg: any, index: number) => ({
+          id: `${sessionId}-${index}`,
+          content: msg.content,
+          isUser: msg.role === 'user',
+          timestamp: new Date(msg.timestamp),
+          reasoning: msg.reasoning,
+          analysis: msg.analysis,
+          profile: msg.profile,
+        }));
+        setMessages(transformedMessages);
+        // Update sessionId in parent to maintain it
+        if (onSessionChange) {
+          onSessionChange(sessionId);
+        }
+      } else {
+        console.error('Failed to load session history:', response.statusText);
+      }
+    } catch (error) {
+      console.error('Error loading session:', error);
+    }
   };
 
   const handleNewChat = () => {
