@@ -145,11 +145,12 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 
   // Format inline text (bold, italic)
   const formatInlineText = (text: string) => {
-    const parts = [];
+    const parts: (string | JSX.Element)[] = [];
     let lastIndex = 0;
+    let keyCounter = 0;
     
-    // Match **bold** text
-    const boldRegex = /\*\*([^*]+)\*\*/g;
+    // Match **bold** text (closed) OR **bold text at end (unclosed)
+    const boldRegex = /\*\*([^*]+?)(\*\*|$)/g;
     let match;
     
     while ((match = boldRegex.exec(text)) !== null) {
@@ -158,7 +159,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
         parts.push(text.substring(lastIndex, match.index));
       }
       // Add bold text
-      parts.push(<strong key={match.index}>{match[1]}</strong>);
+      parts.push(<strong key={keyCounter++}>{match[1]}</strong>);
       lastIndex = match.index + match[0].length;
     }
     
