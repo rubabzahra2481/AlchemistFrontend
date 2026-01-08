@@ -131,7 +131,7 @@ export const PsychologicalProfileDebug: React.FC<ProfileDebugProps> = ({ profile
               <div style={styles.evidenceSection}>
                 <div style={styles.evidenceTitle}>Evidence:</div>
                 {(data.Evidence || data.evidence || []).slice(0, 3).map((ev: string, i: number) => (
-                  <div key={i} style={styles.evidenceItem}>"{ev}"</div>
+                  <div key={i} style={styles.evidenceItem}>&quot;{ev}&quot;</div>
                 ))}
               </div>
             )}
