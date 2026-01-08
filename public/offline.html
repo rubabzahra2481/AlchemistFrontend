@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Alchemist - Offline</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: linear-gradient(135deg, #42047D15 0%, #F6782F15 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    
+    .container {
+      text-align: center;
+      max-width: 500px;
+    }
+    
+    .icon {
+      width: 120px;
+      height: 120px;
+      margin: 0 auto 32px;
+      background: linear-gradient(135deg, #42047D 0%, #F6782F 100%);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 60px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+    }
+    
+    h1 {
+      font-family: 'Agrandir Grand', sans-serif;
+      font-size: 36px;
+      color: #42047D;
+      margin-bottom: 16px;
+      font-weight: 700;
+    }
+    
+    p {
+      font-size: 16px;
+      color: #841477;
+      line-height: 150%;
+      margin-bottom: 24px;
+    }
+    
+    .retry-btn {
+      background: linear-gradient(90deg, #42047D 0%, #F6782F 100%);
+      color: white;
+      border: none;
+      padding: 14px 32px;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    
+    .retry-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+    }
+    
+    .status {
+      margin-top: 24px;
+      padding: 12px 20px;
+      background: rgba(236, 64, 73, 0.1);
+      border: 1px solid rgba(236, 64, 73, 0.3);
+      border-radius: 8px;
+      color: #841477;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="icon">📡</div>
+    <h1>You're Offline</h1>
+    <p>
+      AI Alchemist needs an internet connection to provide personalized insights. 
+      Your conversation history is safe and will sync when you're back online.
+    </p>
+    <button class="retry-btn" onclick="location.reload()">
+      Retry Connection
+    </button>
+    <div class="status" id="status">
+      🔌 No internet connection detected
+    </div>
+  </div>
+
+  <script>
+    // Check connection status
+    function updateStatus() {
+      const status = document.getElementById('status');
+      if (navigator.onLine) {
+        status.innerHTML = '✅ Connection restored! Reloading...';
+        status.style.background = 'rgba(246, 120, 47, 0.1)';
+        status.style.borderColor = 'rgba(246, 120, 47, 0.3)';
+        setTimeout(() => location.reload(), 1000);
+      } else {
+        status.innerHTML = '🔌 No internet connection detected';
+        status.style.background = 'rgba(236, 64, 73, 0.1)';
+        status.style.borderColor = 'rgba(236, 64, 73, 0.3)';
+      }
+    }
+    
+    // Listen for online/offline events
+    window.addEventListener('online', updateStatus);
+    window.addEventListener('offline', updateStatus);
+    
+    // Check every 5 seconds
+    setInterval(updateStatus, 5000);
+  </script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
