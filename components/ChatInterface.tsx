@@ -7,7 +7,7 @@ import { TypingIndicator } from './TypingIndicator';
 import { AICreditsBar } from './AICreditsBar';
 import { ChatHistorySidebar, ChatSession } from './ChatHistorySidebar';
 import { LLMSelector, LLMModel } from './LLMSelector';
-// import { PsychologicalProfileDebug } from './PsychologicalProfileDebug'; // COMMENTED OUT FOR PRODUCTION
+import { PsychologicalProfileDebug } from './PsychologicalProfileDebug'; // DEBUG MODE ENABLED
 
 // Helper to get API URL
 const getApiUrl = () => {
@@ -1010,14 +1010,11 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         </div>
       </div>
 
-      {/* Psychological Profile Debug Panel - COMMENTED OUT FOR PRODUCTION */}
-      {/* Uncomment the section below to see detailed psychological analysis in debug panel */}
-      {/* 
+      {/* Psychological Profile Debug Panel - DEBUG MODE ENABLED */}
       <PsychologicalProfileDebug 
         profile={latestProfile}
         analysis={latestAnalysis}
       />
-      */}
     </div>
   );
 };
