@@ -159,7 +159,7 @@ export const colors = {
 export const typography = {
   // Display (Hero sections, landing pages)
   display: {
-    fontFamily: 'Agrandir Grand, sans-serif',
+    fontFamily: 'Outfit, sans-serif',
     fontWeight: 700,
     fontSize: { desktop: '72px', mobile: '48px' },
     lineHeight: '1.1',
@@ -167,7 +167,7 @@ export const typography = {
   },
   // H1 (Page titles)
   h1: {
-    fontFamily: 'Agrandir Grand, sans-serif',
+    fontFamily: 'Outfit, sans-serif',
     fontWeight: 700,
     fontSize: { desktop: '56px', mobile: '36px' },
     lineHeight: '1.12',
@@ -175,7 +175,7 @@ export const typography = {
   },
   // H2 (Section headers)
   h2: {
-    fontFamily: 'Agrandir Grand, sans-serif',
+    fontFamily: 'Outfit, sans-serif',
     fontWeight: 600,
     fontSize: { desktop: '40px', mobile: '28px' },
     lineHeight: '1.15',
@@ -183,7 +183,7 @@ export const typography = {
   },
   // H3 (Subsection headers)
   h3: {
-    fontFamily: 'Suisse Intl, sans-serif',
+    fontFamily: 'DM Sans, sans-serif',
     fontWeight: 600,
     fontSize: { desktop: '24px', mobile: '20px' },
     lineHeight: '1.25',
@@ -191,7 +191,7 @@ export const typography = {
   },
   // H4 (Card titles, small headers)
   h4: {
-    fontFamily: 'Suisse Intl, sans-serif',
+    fontFamily: 'DM Sans, sans-serif',
     fontWeight: 600,
     fontSize: { desktop: '18px', mobile: '16px' },
     lineHeight: '1.3',
@@ -199,7 +199,7 @@ export const typography = {
   },
   // Body (Main content)
   body: {
-    fontFamily: 'Suisse Intl, sans-serif',
+    fontFamily: 'DM Sans, sans-serif',
     fontWeight: 400,
     fontSize: { desktop: '15px', mobile: '14px' },
     lineHeight: '1.6',
@@ -207,7 +207,7 @@ export const typography = {
   },
   // Body Large (Emphasized content)
   bodyLarge: {
-    fontFamily: 'Suisse Intl, sans-serif',
+    fontFamily: 'DM Sans, sans-serif',
     fontWeight: 400,
     fontSize: { desktop: '17px', mobile: '16px' },
     lineHeight: '1.6',

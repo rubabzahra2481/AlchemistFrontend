@@ -15,11 +15,11 @@ export default function Document() {
           rel="stylesheet" 
         />
         <link 
-          href="https://fonts.googleapis.com/css2?family=Agrandir+Grand:wght@400;500;600;700&display=swap" 
+          href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap" 
           rel="stylesheet" 
         />
         <link 
-          href="https://fonts.googleapis.com/css2?family=Suisse+Intl:wght@400;500;600&display=swap" 
+          href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&display=swap" 
           rel="stylesheet" 
         />
 
