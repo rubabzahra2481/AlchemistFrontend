@@ -683,8 +683,6 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
           gap: '10px',
           flexShrink: 0,
         }}>
-          <AICreditsBar credits={aiCredits} warning={creditWarning} message={creditMessage} />
-          
           <Link 
             href="/debug-panel"
             style={{
@@ -705,23 +703,6 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
             <span style={{ fontSize: '12px' }}>🔍</span>
             <span>Debug</span>
           </Link>
-          
-          <div style={{
-            padding: '4px 10px',
-            background: colors.gray50,
-            borderRadius: '6px',
-            border: `1px solid ${colors.gray200}`,
-            fontFamily: typography.caption.fontFamily,
-            fontSize: '11px',
-            color: colors.gray600,
-            display: 'flex',
-            alignItems: 'center',
-            gap: '5px',
-            fontWeight: 500,
-          }}>
-            <span style={{ fontSize: '12px' }}>🧠</span>
-            <span>Analysis</span>
-          </div>
         </div>
       </div>
 
