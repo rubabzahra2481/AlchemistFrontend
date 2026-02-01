@@ -32,6 +32,7 @@ export interface Message {
 interface ChatInterfaceProps {
   onSendMessage: (message: string, selectedLLM?: string) => Promise<any>;
   sessionId?: string;
+  userId?: string; // User ID for fetching sessions and history
   onNewChat?: () => void; // Add callback to reset session in parent
   onSessionChange?: (sessionId: string) => void; // Add callback to update session in parent
 }
@@ -39,6 +40,7 @@ interface ChatInterfaceProps {
 export const ChatInterface: React.FC<ChatInterfaceProps> = ({ 
   onSendMessage, 
   sessionId,
+  userId,
   onNewChat: onNewChatProp,
   onSessionChange
 }) => {
@@ -233,7 +235,9 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     }
     
     try {
-      const apiUrl = `${getApiUrl()}/chat/sessions`;
+      // Include userId to fetch sessions for this specific user
+      const baseUrl = `${getApiUrl()}/chat/sessions`;
+      const apiUrl = userId ? `${baseUrl}?userId=${userId}` : baseUrl;
       
       const response = await fetch(apiUrl);
 
@@ -265,7 +269,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         setIsLoadingSessions(false);
       }
     }
-  }, [cacheSessions]);
+  }, [cacheSessions, userId]);
 
   // Load sessions on mount (no auth required)
   useEffect(() => {
