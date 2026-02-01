@@ -65,19 +65,30 @@ export default function DebugPanel() {
       const response = await fetch(`${getApiUrl()}/chat/session/${sessionId}/history`);
       if (response.ok) {
         const data = await response.json();
+        console.log('🔍 [Debug] Raw session data:', data);
         
         // Extract the latest AI message with analysis
         const aiMessages = data.filter((m: any) => m.role === 'assistant' || m.role === 'agent');
         const latestAI = aiMessages[aiMessages.length - 1];
+        console.log('🔍 [Debug] Latest AI message:', latestAI);
+        
+        // Extract frameworks from profile snapshot (they're stored in the profile)
+        const profile = latestAI?.profileSnapshot || latestAI?.profile || null;
+        const analysis = latestAI?.analysis || null;
+        
+        // Extract triggered frameworks from profile keys
+        const frameworkKeys = profile ? Object.keys(profile).filter(key => 
+          ['dass', 'rse', 'bigFive', 'darkTriad', 'crt', 'attachment', 'enneagram', 'mbti', 'erikson', 'gestalt', 'bioPsych', 'edna'].includes(key)
+        ) : [];
         
         setDebugData({
           sessionId,
           messages: data,
-          latestAnalysis: latestAI?.analysis || latestAI?.metadata?.analysis || null,
-          latestProfile: latestAI?.profileSnapshot || latestAI?.metadata?.profileSnapshot || null,
-          latestReasoning: latestAI?.reasoning || latestAI?.metadata?.reasoning || '',
-          ednaProfile: latestAI?.metadata?.ednaProfile || null,
-          frameworksTriggered: latestAI?.metadata?.frameworksTriggered || [],
+          latestAnalysis: analysis,
+          latestProfile: profile,
+          latestReasoning: latestAI?.reasoning || '',
+          ednaProfile: profile?.edna || null,
+          frameworksTriggered: frameworkKeys,
         });
       }
     } catch (error) {
@@ -252,12 +263,13 @@ export default function DebugPanel() {
           <div style={{...styles.flowBox, background: 'rgba(139, 92, 246, 0.2)', border: '1px solid #8b5cf6'}}>
             <strong>3. Psychological Frameworks Analyzed</strong>
             <div style={{marginTop: '8px'}}>
-              {((debugData?.frameworksTriggered && debugData.frameworksTriggered.length > 0) 
-                ? debugData.frameworksTriggered 
-                : (debugData?.latestProfile?.frameworksUsed || ['dass', 'bigFive', 'attachment'])
-              ).map((f: string) => (
-                <span key={f} style={styles.badge}>{f}</span>
-              ))}
+              {debugData?.frameworksTriggered && debugData.frameworksTriggered.length > 0 ? (
+                debugData.frameworksTriggered.map((f: string) => (
+                  <span key={f} style={styles.badge}>{f}</span>
+                ))
+              ) : (
+                <span style={{color: '#666', fontSize: '12px'}}>No frameworks triggered yet - send a message first</span>
+              )}
             </div>
           </div>
           
@@ -330,44 +342,69 @@ export default function DebugPanel() {
     </div>
   );
 
-  const renderFrameworksTab = () => (
-    <div>
-      <div style={styles.section}>
-        <div style={styles.sectionTitle}>🔬 Psychological Frameworks Called</div>
-        <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: spacing.md}}>
-          {['DASS-42', 'Big Five', 'Dark Triad', 'RSE', 'Attachment', 'Enneagram', 'MBTI', 'Erikson', 'Gestalt', 'CRT', 'BioPsych'].map(framework => {
-            const triggered = debugData?.frameworksTriggered?.includes(framework.toLowerCase().replace(/[- ]/g, '')) ||
-                             debugData?.latestProfile?.frameworksUsed?.includes(framework.toLowerCase());
-            return (
-              <div 
-                key={framework}
-                style={{
-                  padding: spacing.md,
-                  background: triggered ? 'rgba(34, 197, 94, 0.2)' : 'rgba(255,255,255,0.05)',
-                  border: `1px solid ${triggered ? '#22c55e' : 'rgba(255,255,255,0.1)'}`,
-                  borderRadius: borderRadius.md,
-                }}
-              >
-                <div style={{fontWeight: 600, marginBottom: '4px'}}>
-                  {triggered ? '✅' : '⚪'} {framework}
+  const renderFrameworksTab = () => {
+    // Map display names to actual keys used in profile
+    const frameworkMap: Record<string, string> = {
+      'DASS-42': 'dass',
+      'Big Five': 'bigFive',
+      'Dark Triad': 'darkTriad',
+      'RSE': 'rse',
+      'Attachment': 'attachment',
+      'Enneagram': 'enneagram',
+      'MBTI': 'mbti',
+      'Erikson': 'erikson',
+      'Gestalt': 'gestalt',
+      'CRT': 'crt',
+      'BioPsych': 'bioPsych',
+    };
+
+    return (
+      <div>
+        <div style={styles.section}>
+          <div style={styles.sectionTitle}>🔬 Psychological Frameworks Called</div>
+          <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: spacing.md}}>
+            {Object.entries(frameworkMap).map(([displayName, key]) => {
+              const triggered = debugData?.frameworksTriggered?.includes(key) || 
+                               (debugData?.latestProfile && debugData.latestProfile[key]);
+              const frameworkData = debugData?.latestProfile?.[key];
+              return (
+                <div 
+                  key={key}
+                  style={{
+                    padding: spacing.md,
+                    background: triggered ? 'rgba(34, 197, 94, 0.2)' : 'rgba(255,255,255,0.05)',
+                    border: `1px solid ${triggered ? '#22c55e' : 'rgba(255,255,255,0.1)'}`,
+                    borderRadius: borderRadius.md,
+                  }}
+                >
+                  <div style={{fontWeight: 600, marginBottom: '4px'}}>
+                    {triggered ? '✅' : '⚪'} {displayName}
+                  </div>
+                  <div style={{fontSize: '11px', color: '#888'}}>
+                    {triggered ? 'Called this session' : 'Not triggered'}
+                  </div>
+                  {triggered && frameworkData && (
+                    <div style={{fontSize: '10px', color: '#4ade80', marginTop: '4px'}}>
+                      {typeof frameworkData === 'object' && frameworkData.plain_english_insight 
+                        ? frameworkData.plain_english_insight.slice(0, 80) + '...'
+                        : 'Data available'}
+                    </div>
+                  )}
                 </div>
-                <div style={{fontSize: '11px', color: '#888'}}>
-                  {triggered ? 'Called this session' : 'Not triggered'}
-                </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
+        </div>
+        
+        <div style={styles.section}>
+          <div style={styles.sectionTitle}>📋 Analysis Results</div>
+          <div style={styles.code}>
+            {JSON.stringify(debugData?.latestAnalysis || { note: 'Select a session to see analysis' }, null, 2)}
+          </div>
         </div>
       </div>
-      
-      <div style={styles.section}>
-        <div style={styles.sectionTitle}>📋 Analysis Results</div>
-        <div style={styles.code}>
-          {JSON.stringify(debugData?.latestAnalysis || { note: 'Select a session to see analysis' }, null, 2)}
-        </div>
-      </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div style={styles.container}>
