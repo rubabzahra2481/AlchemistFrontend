@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import { colors, typography, spacing, borderRadius, shadows, motion, zIndex } from '../design-tokens';
 import { MessageBubble } from './MessageBubble';
 import { TypingIndicator } from './TypingIndicator';
@@ -683,6 +684,27 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
           flexShrink: 0,
         }}>
           <AICreditsBar credits={aiCredits} warning={creditWarning} message={creditMessage} />
+          
+          <Link 
+            href="/debug-panel"
+            style={{
+              padding: '4px 10px',
+              background: 'linear-gradient(135deg, #8b5cf6 0%, #3b82f6 100%)',
+              borderRadius: '6px',
+              fontFamily: typography.caption.fontFamily,
+              fontSize: '11px',
+              color: '#fff',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '5px',
+              fontWeight: 500,
+              textDecoration: 'none',
+              cursor: 'pointer',
+            }}
+          >
+            <span style={{ fontSize: '12px' }}>🔍</span>
+            <span>Debug</span>
+          </Link>
           
           <div style={{
             padding: '4px 10px',
