@@ -52,12 +52,18 @@ export default function Home() {
     setSessionId(undefined);
   };
 
+  const handleSessionChange = (newSessionId: string) => {
+    console.log('📝 [Home] Session changed to:', newSessionId);
+    setSessionId(newSessionId);
+  };
+
   return (
     <ChatInterface 
       onSendMessage={handleSendMessage} 
       sessionId={sessionId}
       userId={TEST_USER_ID}
       onNewChat={handleNewChat}
+      onSessionChange={handleSessionChange}
     />
   );
 }
