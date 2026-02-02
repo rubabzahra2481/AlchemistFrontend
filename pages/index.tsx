@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { ChatInterface } from '../components/ChatInterface';
 
 // Test user with E-DNA quiz results (Munawar Testing - architect type)
-const TEST_USER_ID = '9498f4e8-3001-7088-50eb-82853a5a76eb';
+// IMPORTANT: Must match iOS app's UUID case exactly for session sync
+const TEST_USER_ID = '9498F4E8-3001-7088-50EB-82853A5A76EB';
 
 export default function Home() {
   const [sessionId, setSessionId] = useState<string | undefined>(undefined);
