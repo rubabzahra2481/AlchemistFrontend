@@ -684,7 +684,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
           flexShrink: 0,
         }}>
           <Link 
-            href="/debug-panel"
+            href="/debug"
             style={{
               padding: '4px 10px',
               background: 'linear-gradient(135deg, #8b5cf6 0%, #3b82f6 100%)',
