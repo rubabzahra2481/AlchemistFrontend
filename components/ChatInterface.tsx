@@ -4,7 +4,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { colors, typography, spacing, borderRadius, shadows, motion, zIndex } from '../design-tokens';
 import { MessageBubble } from './MessageBubble';
-import { TypingIndicator } from './TypingIndicator';
+// TypingIndicator removed - using inline streaming indicators in MessageBubble
 import { AICreditsBar } from './AICreditsBar';
 import { ChatHistorySidebar, ChatSession } from './ChatHistorySidebar';
 import { LLMSelector, LLMModel } from './LLMSelector';
@@ -15,7 +15,7 @@ const getApiUrl = () => {
   const isLocalhost = typeof window !== 'undefined' && 
     (window.location.hostname === 'localhost' || window.location.hostname.includes('192.168'));
   return isLocalhost 
-    ? `http://${window.location.hostname}:5000`
+    ? `http://${window.location.hostname}:9000`
     : 'https://ptvmvy9qhn.us-east-1.awsapprunner.com';
 };
 
@@ -28,10 +28,14 @@ export interface Message {
   profile?: any; // New structured profile from backend
   analysis?: any; // Legacy analysis for compatibility
   reasoning?: string;
+  // Streaming state
+  isStreaming?: boolean;
+  streamingPhase?: 'analyzing' | 'generating' | 'done';
+  streamingReasoning?: string; // Reasoning being streamed
 }
 
 interface ChatInterfaceProps {
-  onSendMessage: (message: string, selectedLLM?: string) => Promise<any>;
+  onSendMessage: (message: string, selectedLLM?: string, onStream?: (chunk: any) => void) => Promise<any>;
   sessionId?: string;
   userId?: string; // User ID for fetching sessions and history
   onNewChat?: () => void; // Add callback to reset session in parent
@@ -318,43 +322,209 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     };
 
     setMessages(prev => [...prev, userMessage]);
+    const messageText = inputValue;
     setInputValue('');
     setIsLoading(true);
 
-    try {
-      const response = await onSendMessage(inputValue, selectedLLM);
-      
-      // Update latest profile and analysis for debug panel
-      if (response.profile) {
-        setLatestProfile(response.profile);
-      }
-      if (response.analysis) {
-        setLatestAnalysis(response.analysis);
-      }
-      
-      const aiMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        content: response.response,
-        isUser: false,
-        timestamp: new Date(),
-        psychologicalProfile: response.analysis, // Legacy
-        profile: response.profile, // New structured profile
-        analysis: response.analysis, // Legacy analysis
-        reasoning: response.reasoning,
-      };
+    // Create placeholder AI message for streaming
+    const aiMessageId = (Date.now() + 1).toString();
+    const aiMessage: Message = {
+      id: aiMessageId,
+      content: '',
+      isUser: false,
+      timestamp: new Date(),
+      isStreaming: true,
+      streamingPhase: 'analyzing',
+    };
+    setMessages(prev => [...prev, aiMessage]);
 
-      setMessages(prev => [...prev, aiMessage]);
+    try {
+      let accumulatedResponse = '';
+      let finalReasoning = '';
+      let finalProfile: any = null;
+      let finalAnalysis: any = null;
+      let finalSessionId = sessionId;
+
+      // Always use streaming for better UX
+      const response = await onSendMessage(messageText, selectedLLM, (chunk: any) => {
+        console.log('📡 [Stream] Received chunk:', chunk.type, chunk);
+        
+        // Handle streaming chunks
+        if (chunk.type === 'analyzing') {
+          // Update to analyzing phase
+          setMessages(prev => prev.map(msg => 
+            msg.id === aiMessageId 
+              ? { ...msg, isStreaming: true, streamingPhase: 'analyzing' }
+              : msg
+          ));
+        } else if (chunk.type === 'generating') {
+          // Update to generating phase
+          setMessages(prev => prev.map(msg => 
+            msg.id === aiMessageId 
+              ? { ...msg, isStreaming: true, streamingPhase: 'generating' }
+              : msg
+          ));
+        } else if (chunk.type === 'token') {
+          accumulatedResponse += chunk.data?.content || '';
+          
+          // Cursor-style sequential streaming: reasoning first, then response
+          let displayContent = '';
+          let currentPhase: 'analyzing' | 'generating' | 'done' = 'analyzing';
+          let streamingReasoning = '';
+          
+          // Detect if we're streaming JSON format
+          if (accumulatedResponse.trim().startsWith('{')) {
+            // Check if we've started the response field (means reasoning is done)
+            const hasResponseField = accumulatedResponse.includes('"response"');
+            
+            if (hasResponseField) {
+              // We're now in the response phase - extract response content
+              currentPhase = 'generating';
+              const responseMatch = accumulatedResponse.match(/"response"\s*:\s*"([\s\S]*?)(?:"|$)/);
+              if (responseMatch) {
+                displayContent = responseMatch[1]
+                  .replace(/\\n/g, '\n')
+                  .replace(/\\"/g, '"')
+                  .replace(/\\t/g, '\t');
+              }
+              
+              // Also get the complete reasoning
+              const reasoningMatch = accumulatedResponse.match(/"reasoning"\s*:\s*"([\s\S]*?)"\s*,/);
+              if (reasoningMatch) {
+                finalReasoning = reasoningMatch[1]
+                  .replace(/\\n/g, '\n')
+                  .replace(/\\"/g, '"');
+              }
+            } else {
+              // Still in reasoning phase - show reasoning streaming
+              currentPhase = 'analyzing';
+              const reasoningMatch = accumulatedResponse.match(/"reasoning"\s*:\s*"([\s\S]*?)(?:"|$)/);
+              if (reasoningMatch) {
+                streamingReasoning = reasoningMatch[1]
+                  .replace(/\\n/g, '\n')
+                  .replace(/\\"/g, '"');
+              }
+              displayContent = ''; // Don't show response content yet
+            }
+          } else {
+            // Plain text response (no JSON)
+            currentPhase = 'generating';
+            displayContent = accumulatedResponse;
+          }
+          
+          // Update the message in real-time
+          setMessages(prev => prev.map(msg => 
+            msg.id === aiMessageId 
+              ? { 
+                  ...msg, 
+                  content: displayContent, 
+                  reasoning: finalReasoning || undefined,
+                  streamingReasoning: streamingReasoning || finalReasoning || undefined,
+                  isStreaming: true, 
+                  streamingPhase: currentPhase
+                }
+              : msg
+          ));
+          // Force scroll to bottom on each token
+          setTimeout(() => scrollToBottom(), 0);
+        } else if (chunk.type === 'reasoning') {
+          finalReasoning = chunk.data.content;
+          setMessages(prev => prev.map(msg => 
+            msg.id === aiMessageId 
+              ? { ...msg, reasoning: finalReasoning, streamingReasoning: finalReasoning }
+              : msg
+          ));
+        } else if (chunk.type === 'profile') {
+          finalProfile = chunk.data;
+          setLatestProfile(finalProfile);
+        } else if (chunk.type === 'analysis') {
+          finalAnalysis = chunk.data;
+          setLatestAnalysis(finalAnalysis);
+        } else if (chunk.type === 'done') {
+          finalSessionId = chunk.data.sessionId || finalSessionId;
+          
+          // Parse the final response, handling JSON format from LLM
+          let finalContent = chunk.data.response || accumulatedResponse;
+          let finalReasoningFromResponse = chunk.data.reasoning || finalReasoning;
+          
+          // If the accumulated response is JSON, extract the fields
+          if (accumulatedResponse.trim().startsWith('{')) {
+            try {
+              // Try to find complete JSON
+              const jsonMatch = accumulatedResponse.match(/\{[\s\S]*\}/);
+              if (jsonMatch) {
+                const parsed = JSON.parse(jsonMatch[0]);
+                if (parsed.response) {
+                  finalContent = parsed.response;
+                }
+                if (parsed.reasoning) {
+                  finalReasoningFromResponse = parsed.reasoning;
+                }
+              }
+            } catch (e) {
+              // If JSON parsing fails, try regex extraction
+              const responseMatch = accumulatedResponse.match(/"response"\s*:\s*"([\s\S]*?)"\s*[,}]/);
+              if (responseMatch) {
+                finalContent = responseMatch[1]
+                  .replace(/\\n/g, '\n')
+                  .replace(/\\"/g, '"')
+                  .replace(/\\t/g, '\t');
+              }
+            }
+          }
+          
+          // Mark streaming as done
+          setMessages(prev => prev.map(msg => 
+            msg.id === aiMessageId 
+              ? { 
+                  ...msg, 
+                  content: finalContent,
+                  reasoning: finalReasoningFromResponse,
+                  profile: chunk.data.profile || finalProfile,
+                  analysis: chunk.data.analysis || finalAnalysis,
+                  isStreaming: false,
+                  streamingPhase: 'done',
+                }
+              : msg
+          ));
+          
+          // Update sessionId in parent
+          if (chunk.data.sessionId && onSessionChange) {
+            onSessionChange(chunk.data.sessionId);
+          }
+        } else if (chunk.type === 'error') {
+          setMessages(prev => prev.map(msg => 
+            msg.id === aiMessageId 
+              ? { ...msg, content: `Error: ${chunk.data.message}`, isStreaming: false, streamingPhase: 'done' }
+              : msg
+          ));
+        }
+      });
       
-      console.log('✅ [ChatInterface] AI message added to state');
-      console.log('📋 [ChatInterface] Response from backend:', response);
-      console.log('📋 [ChatInterface] Response.sessionId:', response.sessionId);
-      console.log('📋 [ChatInterface] Current sessionId:', sessionId);
-      console.log('📋 [ChatInterface] onSessionChange available:', !!onSessionChange);
-      
-      // Update sessionId in parent if it's in the response
-      if (response.sessionId && onSessionChange) {
-        console.log('🔄 [ChatInterface] Updating sessionId in parent:', response.sessionId);
-        onSessionChange(response.sessionId);
+      // If non-streaming response (fallback)
+      if (response && response.response) {
+        setMessages(prev => prev.map(msg => 
+          msg.id === aiMessageId 
+            ? { 
+                ...msg, 
+                content: response.response,
+                reasoning: response.reasoning,
+                profile: response.profile,
+                analysis: response.analysis,
+              }
+            : msg
+        ));
+        
+        if (response.profile) {
+          setLatestProfile(response.profile);
+        }
+        if (response.analysis) {
+          setLatestAnalysis(response.analysis);
+        }
+        
+        if (response.sessionId && onSessionChange) {
+          onSessionChange(response.sessionId);
+        }
       }
       
       // Refresh chat sessions list after sending message (don't show loading state)
@@ -811,7 +981,6 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
               />
             ))}
 
-            {isLoading && <TypingIndicator />}
             <div ref={messagesEndRef} />
           </div>
 

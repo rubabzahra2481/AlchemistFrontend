@@ -4,6 +4,32 @@ import React from 'react';
 import { colors, typography, borderRadius, shadows, motion, zIndex } from '../design-tokens';
 import { Message } from './ChatInterface';
 
+// CSS Keyframes for animations
+const StreamingStyles = () => (
+  <style jsx global>{`
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0; }
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 0.6; }
+      50% { opacity: 1; }
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes shimmer {
+      0% { background-position: -200% 0; }
+      100% { background-position: 200% 0; }
+    }
+  `}</style>
+);
+
 interface MessageBubbleProps {
   message: Message;
   showReasoning?: boolean;
@@ -14,6 +40,35 @@ interface MessageBubbleProps {
   onEditSave?: () => void;
   onEditCancel?: () => void;
 }
+
+// Animated typing cursor component
+const TypingCursor: React.FC = () => (
+  <span
+    style={{
+      display: 'inline-block',
+      width: '2px',
+      height: '1em',
+      background: colors.architectIndigo,
+      marginLeft: '2px',
+      animation: 'blink 1s step-end infinite',
+      verticalAlign: 'text-bottom',
+    }}
+  />
+);
+
+// Animated dots component for thinking state
+const ThinkingDots: React.FC = () => {
+  const [dots, setDots] = React.useState('');
+  
+  React.useEffect(() => {
+    const interval = setInterval(() => {
+      setDots(prev => prev.length >= 3 ? '' : prev + '.');
+    }, 400);
+    return () => clearInterval(interval);
+  }, []);
+  
+  return <span style={{ fontFamily: 'monospace', minWidth: '20px', display: 'inline-block' }}>{dots}</span>;
+};
 
 export const MessageBubble: React.FC<MessageBubbleProps> = ({ 
   message, 
@@ -28,6 +83,12 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   const isUser = message.isUser;
   const [showActions, setShowActions] = React.useState(false);
   const [isReasoningExpanded, setIsReasoningExpanded] = React.useState(false);
+  
+  // Streaming state
+  const isStreaming = message.isStreaming;
+  const streamingPhase = message.streamingPhase;
+  const isAnalyzing = isStreaming && streamingPhase === 'analyzing';
+  const isGenerating = isStreaming && streamingPhase === 'generating';
 
   React.useEffect(() => {
     if (!showReasoning) {
@@ -181,21 +242,23 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   }, []);
 
   return (
-    <div style={{
-      display: 'flex',
-      justifyContent: isUser ? 'flex-end' : 'flex-start',
-      marginBottom: '12px',
-    }}>
-      <div 
-        style={{
-          maxWidth: isMobile ? '85%' : '75%',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: isUser ? 'flex-end' : 'flex-start',
-        }}
-        onMouseEnter={() => setShowActions(true)}
-        onMouseLeave={() => setShowActions(false)}
-      >
+    <>
+      <StreamingStyles />
+      <div style={{
+        display: 'flex',
+        justifyContent: isUser ? 'flex-end' : 'flex-start',
+        marginBottom: '12px',
+      }}>
+        <div 
+          style={{
+            maxWidth: isMobile ? '85%' : '75%',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: isUser ? 'flex-end' : 'flex-start',
+          }}
+          onMouseEnter={() => setShowActions(true)}
+          onMouseLeave={() => setShowActions(false)}
+        >
         {/* Message Bubble */}
         <div style={{
           padding: isEditing ? '16px' : (isUser ? '14px 18px' : '16px 20px'),
@@ -306,16 +369,121 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
               flexDirection: 'column',
               gap: '8px',
             }}>
-              <div style={{
-                fontFamily: typography.body.fontFamily,
-                fontSize: "15px",
-                lineHeight: '1.6',
-                margin: 0,
-                wordWrap: 'break-word',
-                whiteSpace: 'pre-wrap',
-              }}>
-                {formatMessageContent(message.content)}
-              </div>
+              {/* Cursor-style: Streaming Thinking Panel (shows FIRST during reasoning phase) */}
+              {!isUser && isStreaming && isAnalyzing && message.streamingReasoning && (
+                <div style={{
+                  padding: '12px 16px',
+                  background: `linear-gradient(135deg, ${colors.architectIndigo}08, ${colors.scaleOrange}05)`,
+                  borderRadius: '12px',
+                  border: `1px solid ${colors.architectIndigo}15`,
+                  marginBottom: '4px',
+                }}>
+                  {/* Header with animated indicator */}
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    marginBottom: '10px',
+                  }}>
+                    <div style={{
+                      width: '18px',
+                      height: '18px',
+                      borderRadius: '50%',
+                      border: `2px solid ${colors.gray300}`,
+                      borderTopColor: colors.architectIndigo,
+                      animation: 'spin 0.8s linear infinite',
+                    }} />
+                    <span style={{
+                      fontFamily: typography.caption.fontFamily,
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      color: colors.architectIndigo,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.5px',
+                    }}>
+                      Thinking
+                    </span>
+                  </div>
+                  {/* Streaming reasoning content */}
+                  <div style={{
+                    fontFamily: typography.body.fontFamily,
+                    fontSize: '13px',
+                    lineHeight: '1.6',
+                    color: colors.gray700,
+                    fontStyle: 'italic',
+                    whiteSpace: 'pre-wrap',
+                  }}>
+                    {message.streamingReasoning}
+                    <TypingCursor />
+                  </div>
+                </div>
+              )}
+
+              {/* Analyzing indicator - shows when streaming but no content/reasoning yet */}
+              {!isUser && isStreaming && !message.content && !message.streamingReasoning && (
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                  padding: '8px 0',
+                }}>
+                  <div style={{
+                    width: '20px',
+                    height: '20px',
+                    borderRadius: '50%',
+                    border: `2px solid ${colors.gray200}`,
+                    borderTopColor: colors.architectIndigo,
+                    animation: 'spin 0.8s linear infinite',
+                  }} />
+                  <span style={{
+                    fontFamily: typography.body.fontFamily,
+                    fontSize: '14px',
+                    color: colors.gray600,
+                    fontStyle: 'italic',
+                  }}>
+                    Analyzing your message<ThinkingDots />
+                  </span>
+                </div>
+              )}
+
+              {/* Collapsed Thinking indicator (when moved to response phase) */}
+              {!isUser && isStreaming && isGenerating && message.reasoning && (
+                <div style={{
+                  padding: '8px 12px',
+                  background: `${colors.architectIndigo}05`,
+                  borderRadius: '8px',
+                  border: `1px solid ${colors.architectIndigo}10`,
+                  marginBottom: '8px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                }}>
+                  <span style={{ fontSize: '14px' }}>💭</span>
+                  <span style={{
+                    fontFamily: typography.caption.fontFamily,
+                    fontSize: '12px',
+                    color: colors.gray500,
+                  }}>
+                    Thought for a moment
+                  </span>
+                </div>
+              )}
+              
+              {/* Message Content (shows SECOND after reasoning) */}
+              {(message.content || (!isAnalyzing && isGenerating)) && (
+                <div style={{
+                  fontFamily: typography.body.fontFamily,
+                  fontSize: "15px",
+                  lineHeight: '1.6',
+                  margin: 0,
+                  wordWrap: 'break-word',
+                  whiteSpace: 'pre-wrap',
+                }}>
+                  {formatMessageContent(message.content)}
+                  {/* Streaming: Show typing cursor while generating */}
+                  {!isUser && isGenerating && message.content && <TypingCursor />}
+                </div>
+              )}
 
             </div>
           )}
@@ -476,6 +644,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
           
         </div>
 
+
         {/* Reasoning Display (for AI messages when enabled) */}
         {!isUser && showReasoning && message.reasoning && isReasoningExpanded && (
           <div style={{
@@ -516,7 +685,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
           </div>
         )}
       </div>
-    </div>
+      </div>
+    </>
   );
 };
 
