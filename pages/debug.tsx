@@ -170,7 +170,7 @@ export default function DebugPage() {
                 Final Response:
               </h3>
               <p style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '12px', lineHeight: '1.6' }}>
-                <strong>What this is:</strong> This is the final message that gets sent back to the user. It's the personalized advice that combines everything the AI learned about the user - their personality type from the quiz, their emotional state from the message, and what psychological frameworks detected. This is what the user actually sees in the chat.
+                <strong>What this is:</strong> This is the final message that gets sent back to the user. It&apos;s the personalized advice that combines everything the AI learned about the user - their personality type from the quiz, their emotional state from the message, and what psychological frameworks detected. This is what the user actually sees in the chat.
               </p>
               <div style={{
                 background: 'rgba(0,0,0,0.5)',
