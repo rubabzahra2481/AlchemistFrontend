@@ -8,6 +8,7 @@ import { MessageBubble } from './MessageBubble';
 import { AICreditsBar } from './AICreditsBar';
 import { ChatHistorySidebar, ChatSession } from './ChatHistorySidebar';
 import { LLMSelector, LLMModel } from './LLMSelector';
+import { TierBadge } from './TierBadge';
 // import { PsychologicalProfileDebug } from './PsychologicalProfileDebug'; // COMMENTED OUT FOR PRODUCTION
 
 // Helper to get API URL
@@ -62,7 +63,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
   const [isLoadingSessions, setIsLoadingSessions] = useState(false);
   const [sessionsAuthTimeout, setSessionsAuthTimeout] = useState(false);
-  const [selectedLLM, setSelectedLLM] = useState<string>('gpt-4o');
+  const [selectedLLM, setSelectedLLM] = useState<string>('gpt-4o-mini'); // Free tier default
   const [availableModels, setAvailableModels] = useState<LLMModel[]>([]);
   const [isLoadingModels, setIsLoadingModels] = useState(true);
   const [latestProfile, setLatestProfile] = useState<any>(null);
@@ -93,16 +94,35 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     }
   }, [messages]);
 
+  // Track if we're in the middle of an active chat (to avoid reloading history)
+  // Using a REF instead of state to avoid stale closure issues in useEffect
+  const isActiveChatRef = useRef(false);
+  
   // Load chat history when sessionId changes (e.g., when user returns to an existing session)
+  // BUT NOT when we just got a new sessionId from our own message
   useEffect(() => {
+    console.log('⚡⚡⚡ [useEffect TRIGGERED] sessionId changed to:', sessionId, 'isActiveChatRef.current:', isActiveChatRef.current);
+    
     const loadChatHistory = async () => {
       if (!sessionId) {
         // No session ID - clear messages for new chat
+        console.log('❌ [useEffect] No sessionId - clearing messages');
         setMessages([]);
+        isActiveChatRef.current = false;
         return;
       }
 
+      // IMPORTANT: If we already have messages (active chat), DON'T reload from API
+      // Using ref.current to get the LATEST value (avoids stale closure)
+      console.log('🔍 [useEffect] Checking isActiveChatRef.current:', isActiveChatRef.current);
+      if (isActiveChatRef.current) {
+        console.log('🔒🔒🔒 [useEffect] SKIPPING history reload - active chat session');
+        return;
+      }
+      console.log('📜📜📜 [useEffect] WILL LOAD history from API - this will OVERWRITE messages!');
+
       try {
+        console.log('📜 [ChatInterface] Loading history for session:', sessionId);
         const apiUrl = `${getApiUrl()}/chat/session/${sessionId}/history`;
         
         const response = await fetch(apiUrl);
@@ -135,7 +155,8 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     };
 
     loadChatHistory();
-  }, [sessionId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId]); // Only run when sessionId changes, NOT when isActiveChatSession changes
 
   // Load available LLM models function (no auth required)
   const loadAvailableModels = useCallback(async (showLoading: boolean = true) => {
@@ -325,9 +346,15 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     const messageText = inputValue;
     setInputValue('');
     setIsLoading(true);
+    
+    // Mark that we're in an active chat - prevents history reload when sessionId updates
+    // Using ref to avoid stale closure issues
+    isActiveChatRef.current = true;
+    console.log('🔐 [handleSendMessage] Set isActiveChatRef.current = true');
 
     // Create placeholder AI message for streaming
     const aiMessageId = (Date.now() + 1).toString();
+    console.log('🆕🆕🆕 [NEW MESSAGE] Creating AI message with ID:', aiMessageId);
     const aiMessage: Message = {
       id: aiMessageId,
       content: '',
@@ -346,15 +373,17 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       let finalSessionId = sessionId;
 
       // Always use streaming for better UX
+      console.log('🚀🚀🚀 [ChatInterface] CALLING onSendMessage for aiMessageId:', aiMessageId);
       const response = await onSendMessage(messageText, selectedLLM, (chunk: any) => {
-        console.log('📡 [Stream] Received chunk:', chunk.type, chunk);
+        console.log('📡 [ChatInterface] Chunk received for aiMessageId:', aiMessageId, 'type:', chunk.type);
         
         // Handle streaming chunks
         if (chunk.type === 'analyzing') {
-          // Update to analyzing phase
+          // Update to analyzing phase - initial placeholder
+          console.log('📊 [ANALYZING] Starting analysis phase...');
           setMessages(prev => prev.map(msg => 
             msg.id === aiMessageId 
-              ? { ...msg, isStreaming: true, streamingPhase: 'analyzing' }
+              ? { ...msg, isStreaming: true, streamingPhase: 'analyzing', streamingReasoning: 'Analyzing your message...' }
               : msg
           ));
         } else if (chunk.type === 'generating') {
@@ -366,6 +395,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
           ));
         } else if (chunk.type === 'token') {
           accumulatedResponse += chunk.data?.content || '';
+          console.log('🔤 [TOKEN] Accumulated:', accumulatedResponse.substring(0, 100));
           
           // Cursor-style sequential streaming: reasoning first, then response
           let displayContent = '';
@@ -388,12 +418,14 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                   .replace(/\\t/g, '\t');
               }
               
-              // Also get the complete reasoning
+              // Also get the complete reasoning AND set streamingReasoning for display
               const reasoningMatch = accumulatedResponse.match(/"reasoning"\s*:\s*"([\s\S]*?)"\s*,/);
               if (reasoningMatch) {
                 finalReasoning = reasoningMatch[1]
                   .replace(/\\n/g, '\n')
                   .replace(/\\"/g, '"');
+                streamingReasoning = finalReasoning; // Also set for streaming display
+                console.log('💭 [RESPONSE PHASE] Set streamingReasoning:', streamingReasoning.substring(0, 50));
               }
             } else {
               // Still in reasoning phase - show reasoning streaming
@@ -403,6 +435,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 streamingReasoning = reasoningMatch[1]
                   .replace(/\\n/g, '\n')
                   .replace(/\\"/g, '"');
+                console.log('💭 [TOKEN REASONING] Extracted reasoning from JSON:', streamingReasoning.substring(0, 50));
               }
               displayContent = ''; // Don't show response content yet
             }
@@ -413,27 +446,35 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
           }
           
           // Update the message in real-time
-          setMessages(prev => prev.map(msg => 
-            msg.id === aiMessageId 
-              ? { 
-                  ...msg, 
-                  content: displayContent, 
-                  reasoning: finalReasoning || undefined,
-                  streamingReasoning: streamingReasoning || finalReasoning || undefined,
-                  isStreaming: true, 
-                  streamingPhase: currentPhase
-                }
-              : msg
-          ));
+          // IMPORTANT: Only update streamingReasoning if we have new content, otherwise preserve existing
+          const newStreamingReasoning = streamingReasoning || finalReasoning;
+          setMessages(prev => prev.map(msg => {
+            if (msg.id !== aiMessageId) return msg;
+            return { 
+              ...msg, 
+              content: displayContent, 
+              reasoning: finalReasoning || msg.reasoning, // Preserve existing if no new
+              streamingReasoning: newStreamingReasoning || msg.streamingReasoning, // Preserve existing if no new
+              isStreaming: true, 
+              streamingPhase: currentPhase
+            };
+          }));
           // Force scroll to bottom on each token
           setTimeout(() => scrollToBottom(), 0);
         } else if (chunk.type === 'reasoning') {
+          // ACTUAL LLM REASONING - this is the real thinking from the AI
           finalReasoning = chunk.data.content;
-          setMessages(prev => prev.map(msg => 
-            msg.id === aiMessageId 
-              ? { ...msg, reasoning: finalReasoning, streamingReasoning: finalReasoning }
-              : msg
-          ));
+          console.log('🧠🧠🧠 [REAL LLM REASONING] for message', aiMessageId, ':', finalReasoning?.substring(0, 100));
+          setMessages(prev => {
+            console.log('🧠 [REASONING UPDATE] Current messages:', prev.map(m => ({ id: m.id, hasReasoning: !!m.reasoning })));
+            const updated = prev.map(msg => 
+              msg.id === aiMessageId 
+                ? { ...msg, reasoning: finalReasoning, streamingReasoning: finalReasoning }
+                : msg
+            );
+            console.log('🧠 [REASONING UPDATE] Updated messages:', updated.map(m => ({ id: m.id, hasReasoning: !!m.reasoning, reasoningLen: m.reasoning?.length })));
+            return updated;
+          });
         } else if (chunk.type === 'profile') {
           finalProfile = chunk.data;
           setLatestProfile(finalProfile);
@@ -442,6 +483,10 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
           setLatestAnalysis(finalAnalysis);
         } else if (chunk.type === 'done') {
           finalSessionId = chunk.data.sessionId || finalSessionId;
+          
+          console.log('🏁 [DONE CHUNK] Received done chunk for aiMessageId:', aiMessageId);
+          console.log('🏁 [DONE CHUNK] chunk.data.reasoning:', chunk.data.reasoning?.substring(0, 50));
+          console.log('🏁 [DONE CHUNK] finalReasoning (from reasoning chunks):', finalReasoning?.substring(0, 50));
           
           // Parse the final response, handling JSON format from LLM
           let finalContent = chunk.data.response || accumulatedResponse;
@@ -474,23 +519,36 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
           }
           
           // Mark streaming as done
-          setMessages(prev => prev.map(msg => 
-            msg.id === aiMessageId 
-              ? { 
+          console.log('✅✅✅ [DONE] Setting reasoning for message:', aiMessageId);
+          console.log('✅ finalReasoningFromResponse:', finalReasoningFromResponse?.substring(0, 100));
+          console.log('✅ chunk.data.reasoning:', chunk.data.reasoning?.substring(0, 100));
+          console.log('✅ finalReasoning (from chunks):', finalReasoning?.substring(0, 100));
+          
+          setMessages(prev => {
+            const newMessages = prev.map(msg => {
+              if (msg.id === aiMessageId) {
+                console.log('✅ Found message to update:', msg.id, 'Setting reasoning of length:', finalReasoningFromResponse?.length);
+                return { 
                   ...msg, 
                   content: finalContent,
                   reasoning: finalReasoningFromResponse,
                   profile: chunk.data.profile || finalProfile,
                   analysis: chunk.data.analysis || finalAnalysis,
                   isStreaming: false,
-                  streamingPhase: 'done',
-                }
-              : msg
-          ));
+                  streamingPhase: 'done' as const,
+                };
+              }
+              return msg;
+            });
+            console.log('✅ Messages after update:', newMessages.map(m => ({ id: m.id, hasReasoning: !!m.reasoning, reasoningLen: m.reasoning?.length })));
+            return newMessages;
+          });
           
-          // Update sessionId in parent
-          if (chunk.data.sessionId && onSessionChange) {
-            onSessionChange(chunk.data.sessionId);
+          // Store sessionId to update AFTER all processing is complete
+          // This prevents the useEffect from triggering during streaming
+          if (chunk.data.sessionId) {
+            finalSessionId = chunk.data.sessionId;
+            console.log('📝 [DONE] Stored sessionId:', finalSessionId, '(will update parent later)');
           }
         } else if (chunk.type === 'error') {
           setMessages(prev => prev.map(msg => 
@@ -522,9 +580,16 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
           setLatestAnalysis(response.analysis);
         }
         
-        if (response.sessionId && onSessionChange) {
-          onSessionChange(response.sessionId);
+        if (response.sessionId) {
+          finalSessionId = response.sessionId;
         }
+      }
+      
+      // NOW update the sessionId in parent - AFTER all message processing is complete
+      // This ensures the useEffect doesn't trigger during streaming
+      if (finalSessionId && onSessionChange) {
+        console.log('🔄 [AFTER STREAMING] Updating parent sessionId to:', finalSessionId);
+        onSessionChange(finalSessionId);
       }
       
       // Refresh chat sessions list after sending message (don't show loading state)
@@ -574,6 +639,8 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
   const handleSessionSelect = async (sessionId: string) => {
     setIsSidebarOpen(false);
+    // Reset active chat flag so we load history from API for this existing session
+    isActiveChatRef.current = false;
     
     try {
       const apiUrl = `${getApiUrl()}/chat/session/${sessionId}/history`;
@@ -614,6 +681,8 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     // Clear any cached profile state
     setLatestProfile(null);
     setLatestAnalysis(null);
+    // Reset active chat flag so history can be loaded for future sessions
+    isActiveChatRef.current = false;
     // Reset session ID in parent component so backend generates a fresh one
     if (onNewChatProp) {
       onNewChatProp();
@@ -873,6 +942,17 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
             <span style={{ fontSize: '12px' }}>🔍</span>
             <span>Debug</span>
           </Link>
+          
+          {/* Elegant Tier Badge in Header - Like ChatGPT's subtle indicators */}
+          {userId && userId !== '00000000-0000-0000-0000-000000000000' && (
+            <div style={{ position: 'relative' }}>
+              <TierBadge 
+                userId={userId} 
+                apiUrl={getApiUrl()} 
+                selectedModel={selectedLLM}
+              />
+            </div>
+          )}
         </div>
       </div>
 
@@ -960,10 +1040,28 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                   maxWidth: isMobile ? '100%' : '480px',
                   padding: isMobile ? '0 8px' : '0',
                   fontWeight: 400,
+                  marginBottom: isMobile ? '24px' : '32px',
                 }}>
                   I transform your thoughts and feelings into actionable growth. 
                   What would you like to explore today?
                 </p>
+                
+                {/* Elegant Tier Badge - Minimal, contextual */}
+                {userId && userId !== '00000000-0000-0000-0000-000000000000' && (
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'center',
+                    marginTop: isMobile ? '16px' : '20px',
+                  }}>
+                    <div style={{ position: 'relative' }}>
+                      <TierBadge 
+                        userId={userId} 
+                        apiUrl={getApiUrl()} 
+                        selectedModel={selectedLLM}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -992,6 +1090,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
             boxShadow: '0 -2px 8px rgba(0, 0, 0, 0.02)',
             flexShrink: 0,
           }}>
+            
             <div style={{
               display: 'flex',
               gap: '8px',
@@ -1049,6 +1148,9 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
               top: '50%',
               transform: 'translateY(-50%)',
               zIndex: 10,
+              display: 'flex',
+              alignItems: 'center',
+              gap: spacing.sm,
             }}>
               <LLMSelector
                 selectedLLM={selectedLLM}
@@ -1057,6 +1159,16 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 isLoading={isLoadingModels}
                 isIntegrated={true}
               />
+              {/* Elegant Tier Badge - Minimal, contextual, next to model selector */}
+              {userId && userId !== '00000000-0000-0000-0000-000000000000' && (
+                <div style={{ position: 'relative' }}>
+                  <TierBadge 
+                    userId={userId} 
+                    apiUrl={getApiUrl()} 
+                    selectedModel={selectedLLM}
+                  />
+                </div>
+              )}
             </div>
             
             {/* Send Button - Integrated inside input with brand colors */}

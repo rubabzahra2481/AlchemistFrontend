@@ -14,18 +14,26 @@ export default function Home() {
       const isLocalhost = typeof window !== 'undefined' && 
         (window.location.hostname === 'localhost' || window.location.hostname.includes('192.168'));
       
-      // Use streaming endpoint if onStream callback is provided
+      // Use /chat endpoint for both streaming and non-streaming (stream=true/false)
       const useStreaming = !!onStream;
       // Backend runs on port 9000 for localhost
       const backendPort = 9000;
+      // Always use /chat endpoint - streaming is controlled by stream parameter in body
       const apiUrl = isLocalhost 
-        ? `http://${window.location.hostname}:${backendPort}/chat${useStreaming ? '/stream' : ''}`
-        : `https://ptvmvy9qhn.us-east-1.awsapprunner.com/chat${useStreaming ? '/stream' : ''}`;
+        ? `http://${window.location.hostname}:${backendPort}/chat`
+        : `https://ptvmvy9qhn.us-east-1.awsapprunner.com/chat`;
       
-      console.log('📡 [Stream] Request URL:', apiUrl, 'Streaming enabled:', useStreaming);
+      console.log('🚀🚀🚀 [HOME PAGE] CALLING /chat endpoint');
+      console.log('📡 URL:', apiUrl);
+      console.log('📡 Message:', message);
+      console.log('📡 SessionId:', sessionId);
+      console.log('📡 Streaming:', useStreaming);
       
       if (useStreaming) {
-        // Streaming request
+        // Streaming request - use /chat with stream: true
+        console.log('🌊🌊🌊 [INDEX.TSX] STREAMING REQUEST');
+        console.log('🌊 [INDEX.TSX] SessionId being sent:', sessionId, '(type:', typeof sessionId, ')');
+        console.log('🌊 [INDEX.TSX] onStream callback exists:', !!onStream);
         const response = await fetch(apiUrl, {
           method: 'POST',
           headers: {
@@ -35,7 +43,8 @@ export default function Home() {
             message,
             sessionId,
             userId: TEST_USER_ID,
-            selectedLLM: selectedLLM || 'gpt-4o',
+            selectedLLM: selectedLLM || 'gpt-4o-mini', // Free tier default
+            stream: true, // Enable streaming via SSE
           }),
         });
 
@@ -67,6 +76,14 @@ export default function Home() {
               if (line.startsWith('data: ')) {
                 try {
                   const data = JSON.parse(line.slice(6));
+                  // Log all chunk types
+                  if (data.type === 'reasoning') {
+                    console.log('📨📨📨 [INDEX.TSX] REASONING CHUNK:', data.data?.content?.substring(0, 60));
+                  } else if (data.type === 'done') {
+                    console.log('🏁🏁🏁 [INDEX.TSX] DONE CHUNK received! Reasoning length:', data.data?.reasoning?.length);
+                  } else {
+                    console.log('📦 [INDEX.TSX] Chunk type:', data.type);
+                  }
                   onStream?.(data);
                 } catch (e) {
                   console.warn('Failed to parse SSE data:', line, e);
@@ -111,7 +128,7 @@ export default function Home() {
             message,
             sessionId,
             userId: TEST_USER_ID,
-            selectedLLM: selectedLLM || 'gpt-4o',
+            selectedLLM: selectedLLM || 'gpt-4o-mini', // Free tier default
           }),
         });
 
