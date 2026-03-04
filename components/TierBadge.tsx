@@ -28,6 +28,11 @@ interface TierInfoData {
     message: string | null;
     tokensUsed: number;
     tokensIncluded: number;
+    creditsUsed?: number;
+    creditsIncluded?: number;
+    baseAllowance?: number;
+    topUpCarried?: number;
+    topUpAddedThisMonth?: number;
     usagePercentage: number;
     warning: boolean;
   };
@@ -386,7 +391,9 @@ export const TierBadge: React.FC<TierBadgeProps> = ({ userId, apiUrl, selectedMo
                   fontSize: '12px',
                   color: colors.gray700,
                 }}>
-                  {credits.tokensUsed.toLocaleString()} / {credits.tokensIncluded.toLocaleString()}
+                  {typeof credits.creditsUsed === 'number' && typeof credits.creditsIncluded === 'number'
+                    ? `${credits.creditsUsed.toFixed(1)} / ${credits.creditsIncluded.toLocaleString()} credits`
+                    : `${credits.tokensUsed.toLocaleString()} / ${credits.tokensIncluded.toLocaleString()}`}
                 </span>
                 <span style={{
                   fontSize: '11px',
@@ -396,6 +403,17 @@ export const TierBadge: React.FC<TierBadgeProps> = ({ userId, apiUrl, selectedMo
                   {credits.usagePercentage.toFixed(0)}%
                 </span>
               </div>
+              {(typeof credits.topUpCarried === 'number' && credits.topUpCarried > 0) || (typeof credits.topUpAddedThisMonth === 'number' && credits.topUpAddedThisMonth > 0) ? (
+                <div style={{ fontSize: '10px', color: colors.gray600, marginBottom: '4px' }}>
+                  {typeof credits.baseAllowance === 'number' && <span>{credits.baseAllowance} base</span>}
+                  {typeof credits.topUpCarried === 'number' && credits.topUpCarried > 0 && (
+                    <span>{credits.baseAllowance != null ? ' + ' : ''}{credits.topUpCarried.toFixed(0)} carried</span>
+                  )}
+                  {typeof credits.topUpAddedThisMonth === 'number' && credits.topUpAddedThisMonth > 0 && (
+                    <span>{credits.baseAllowance != null || (credits.topUpCarried ?? 0) > 0 ? ' + ' : ''}{credits.topUpAddedThisMonth.toFixed(0)} top-up</span>
+                  )}
+                </div>
+              ) : null}
               <div style={{
                 width: '100%',
                 height: '4px',

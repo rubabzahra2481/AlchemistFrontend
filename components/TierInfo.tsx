@@ -41,6 +41,11 @@ interface TierInfoData {
     message: string | null;
     tokensUsed: number;
     tokensIncluded: number;
+    creditsUsed?: number;
+    creditsIncluded?: number;
+    baseAllowance?: number;
+    topUpCarried?: number;
+    topUpAddedThisMonth?: number;
     usagePercentage: number;
     warning: boolean;
   };
@@ -268,7 +273,9 @@ export const TierInfo: React.FC<TierInfoProps> = ({ userId, apiUrl }) => {
                   marginBottom: spacing.xs,
                 }}>
                   <span style={{ fontSize: '13px', color: colors.gray700, fontWeight: 500 }}>
-                    {credits.tokensUsed.toLocaleString()} / {credits.tokensIncluded.toLocaleString()} tokens
+                    {typeof credits.creditsUsed === 'number' && typeof credits.creditsIncluded === 'number'
+                      ? `${credits.creditsUsed.toFixed(1)} / ${credits.creditsIncluded.toLocaleString()} credits`
+                      : `${credits.tokensUsed.toLocaleString()} / ${credits.tokensIncluded.toLocaleString()} tokens`}
                   </span>
                   <span style={{
                     fontSize: '12px',
@@ -278,6 +285,19 @@ export const TierInfo: React.FC<TierInfoProps> = ({ userId, apiUrl }) => {
                     {credits.usagePercentage.toFixed(0)}% used
                   </span>
                 </div>
+                {(typeof credits.topUpCarried === 'number' && credits.topUpCarried > 0) || (typeof credits.topUpAddedThisMonth === 'number' && credits.topUpAddedThisMonth > 0) ? (
+                  <div style={{ fontSize: '11px', color: colors.gray600, marginBottom: spacing.xs }}>
+                    {typeof credits.baseAllowance === 'number' && (
+                      <span>{credits.baseAllowance.toLocaleString()} base</span>
+                    )}
+                    {typeof credits.topUpCarried === 'number' && credits.topUpCarried > 0 && (
+                      <span>{credits.baseAllowance != null ? ' + ' : ''}{credits.topUpCarried.toFixed(0)} top-up carried</span>
+                    )}
+                    {typeof credits.topUpAddedThisMonth === 'number' && credits.topUpAddedThisMonth > 0 && (
+                      <span>{credits.baseAllowance != null || (credits.topUpCarried ?? 0) > 0 ? ' + ' : ''}{credits.topUpAddedThisMonth.toFixed(0)} top-up this month</span>
+                    )}
+                  </div>
+                ) : null}
                 <div style={{
                   width: '100%',
                   height: '10px',
