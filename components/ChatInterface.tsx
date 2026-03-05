@@ -317,6 +317,25 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
   const [creditsBlocked, setCreditsBlocked] = useState(false);
   const [maxInputWords, setMaxInputWords] = useState<number>(300); // default Free limit
+  const [userTier, setUserTier] = useState<string>('free');
+  const [showTopUpModal, setShowTopUpModal] = useState(false);
+
+  // First day of next month (for "credits reset" message)
+  const getCreditResetDate = () => {
+    const now = new Date();
+    const next = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    return next.toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
+  };
+
+  // Packs to offer per tier (credits) — from implementation guide
+  const TOP_UP_PACKS: Record<string, { label: string; credits: number }[]> = {
+    free: [{ label: 'Small', credits: 25 }, { label: 'Medium', credits: 50 }],
+    basic: [{ label: 'Small', credits: 25 }, { label: 'Medium', credits: 50 }, { label: 'Large', credits: 100 }],
+    standard: [{ label: 'Small', credits: 25 }, { label: 'Medium', credits: 50 }, { label: 'Large', credits: 100 }, { label: 'XL', credits: 250 }],
+    pro: [{ label: 'Small', credits: 25 }, { label: 'Medium', credits: 50 }, { label: 'Large', credits: 100 }, { label: 'XL', credits: 250 }, { label: 'XXL', credits: 500 }],
+    elite: [{ label: 'Small', credits: 25 }, { label: 'Medium', credits: 50 }, { label: 'Large', credits: 100 }, { label: 'XL', credits: 250 }, { label: 'XXL', credits: 500 }, { label: 'Mega', credits: 1000 }],
+  };
+  const topUpPacksForTier = TOP_UP_PACKS[userTier.toLowerCase()] || TOP_UP_PACKS.free;
 
   // Load credit usage from tier-info endpoint (same API iOS uses)
   const loadCreditStats = useCallback(async () => {
@@ -327,6 +346,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
       if (response.ok) {
         const data = await response.json();
+        if (data.tier) setUserTier(data.tier);
         const credits = data.credits;
         if (credits) {
           setAiCredits(credits.usagePercentage || 0);
@@ -1344,7 +1364,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
             {(creditsBlocked || wordLimitExceeded) && (
               <div style={{
                 position: 'absolute',
-                top: '-36px',
+                top: '-52px',
                 left: 0,
                 right: 0,
                 textAlign: 'center',
@@ -1352,13 +1372,37 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 fontWeight: 600,
                 color: '#DC2626',
                 background: '#FEF2F2',
-                padding: '6px 12px',
+                padding: '8px 12px',
                 borderRadius: borderRadius.md,
                 border: '1px solid #FEE2E2',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '6px',
               }}>
-                {creditsBlocked
-                  ? 'Credits exhausted — upgrade your plan to continue'
-                  : `Message too long — shorten to ${maxInputWords.toLocaleString()} words or upgrade your plan`}
+                {creditsBlocked ? (
+                  <>
+                    <span>Credits exhausted — upgrade your plan, buy credits, or wait until {getCreditResetDate()} to continue.</span>
+                    <button
+                      type="button"
+                      onClick={() => setShowTopUpModal(true)}
+                      style={{
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        color: '#B91C1C',
+                        background: '#FEE2E2',
+                        border: '1px solid #FECACA',
+                        borderRadius: '8px',
+                        padding: '4px 10px',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Buy credits
+                    </button>
+                  </>
+                ) : (
+                  `Message too long — shorten to ${maxInputWords.toLocaleString()} words or upgrade your plan`
+                )}
               </div>
             )}
 
@@ -1490,6 +1534,97 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Top-up credits modal — packs per tier (payment via upgrade/app) */}
+      {showTopUpModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="topup-title"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.4)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: zIndex?.modal ?? 1000,
+          }}
+          onClick={() => setShowTopUpModal(false)}
+        >
+          <div
+            style={{
+              background: colors.white,
+              borderRadius: '16px',
+              padding: '24px',
+              maxWidth: '400px',
+              width: '90%',
+              boxShadow: shadows.lg,
+              border: `1px solid ${colors.gray200}`,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 id="topup-title" style={{ fontSize: '18px', fontWeight: 600, color: colors.gray900, marginBottom: '8px' }}>
+              Buy credits
+            </h2>
+            <p style={{ fontSize: '13px', color: colors.gray600, marginBottom: '16px' }}>
+              Credit packs for your plan ({userTier}). 1 credit = 1,000 tokens. Payment is handled through upgrade or the app.
+            </p>
+            <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 16px 0' }}>
+              {topUpPacksForTier.map((pack) => (
+                <li
+                  key={pack.credits}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    padding: '8px 12px',
+                    background: colors.gray50,
+                    borderRadius: '8px',
+                    marginBottom: '6px',
+                    fontSize: '14px',
+                  }}
+                >
+                  <span style={{ fontWeight: 500 }}>{pack.label}</span>
+                  <span style={{ color: colors.gray600 }}>{pack.credits} credits</span>
+                </li>
+              ))}
+            </ul>
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                onClick={async () => { await loadCreditStats(); setShowTopUpModal(false); }}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: colors.architectIndigo,
+                  color: colors.white,
+                  fontSize: '14px',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                }}
+              >
+                Refresh credits
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowTopUpModal(false)}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: '8px',
+                  border: `1px solid ${colors.gray300}`,
+                  background: colors.white,
+                  color: colors.gray700,
+                  fontSize: '14px',
+                  cursor: 'pointer',
+                }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Psychological Profile Debug Panel - COMMENTED OUT FOR PRODUCTION */}
       {/* Uncomment the section below to see detailed psychological analysis in debug panel */}
